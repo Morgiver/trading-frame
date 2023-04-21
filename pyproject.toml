@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-frame"
+version = "0.0.1"
+authors = [
+  { name="Morgiver", email="me@morgiver.net" },
+]
+description = "A package to manage programatically a set of views and frames of trading data"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Morgiver/trading-frame"
+"Bug Tracker" = "https://github.com/Morgiver/trading-frame/issues"
