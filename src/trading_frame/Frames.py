@@ -1,4 +1,8 @@
-class Tick:
+class RawDataInterface:
+    def get_raw(self) -> list:
+        """ Return a list of raw parameters """
+
+class Tick(RawDataInterface):
     """
     A Tick is a move of two possible price : Bid and Ask prices.
     Bid and Ask are the best prices in the orderbook, they move when the
@@ -22,13 +26,21 @@ class Tick:
         Returns:
             None
         """
+        super(Tick, self).__init__()
+
         self.date = date
         self.bid_price  = bid_price
         self.ask_price  = ask_price
         self.bid_volume = bid_volume
         self.ask_volume = ask_volume
 
-class Trade:
+        if self.bid_price > self.ask_price:
+            raise Execption("Bid price should be lower or equal to the Ask price")
+
+    def get_raw(self):
+        return [self.date, self.bid_price, self.ask_price, self.bid_volume, self.ask_volume]
+
+class Trade(RawDataInterface):
     """
     A Trade is an executed transaction between two actors : Buy and Seller.
     One of the two actors is the Maker, the one who propose volume at a price level
@@ -47,10 +59,15 @@ class Trade:
         Returns:
             None
         """
+        super(Trade, self).__init__()
+
         self.date = date
         self.price = price
-        self.volume = Volume
+        self.volume = volume
         self.side = taker
+
+    def get_raw(self):
+        return [self.date, self.price, self.volume, self.side]
 
 class Frame:
     """
@@ -75,6 +92,7 @@ class Frame:
         self.max_periods = max_periods
         self.raw_datas = []
         self.periods = []
+        self.feeding_type = None
 
     def _aggregate_to_period(self, raw_data: Tick | Trade) -> None:
         """
@@ -92,7 +110,12 @@ class Frame:
 
     def feed(self, raw_data: Tick | Trade) -> None:
         """
-        Feeding the Frame with raw data
+        Feeding the Frame with raw trading data.
+
+        When the Frame is feeded the first time, it store the type of raw data (tick or trade),
+        to remember it for the next feed. So if you feed your frame with different data,
+        feed method will raise an exception.
+        If length of raw datas is greater than the maximum raw data, it will pop the first index.
 
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
@@ -100,12 +123,15 @@ class Frame:
         Returns:
             None
         """
-        if type(raw_data) == Tick:
-            self.raw_datas.append([raw_data.date, raw_data.bid_price, raw_data.ask_price, raw_data.volume])
-        if type(raw_data) == Trade:
-            self.raw_datas.append([raw_data.date, raw_data.price, raw_data.volume, raw_data.side])
+        if len(self.raw_datas) > 0 and type(raw_data) != self.feeding_type:
+            raise Exception(f"Raw Data feeded is not a {self.feeding_type} type")
 
-        if len(self.raw_datas) <= self.max_raw_data:
+        if len(self.raw_datas) < 1:
+            self.feeding_type = type(raw_data)
+
+        self.raw_datas.append(raw_data.get_raw())
+
+        if len(self.raw_datas) > self.max_raw_data:
             self.raw_datas.pop(0)
 
         self._aggregate_to_period(raw_data)

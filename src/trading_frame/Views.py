@@ -8,6 +8,6 @@ class View:
     def set_frame(self, frame: Frame):
         pass
 
-class CandlestickView(View) -> None:
-    def __init__(self):
+class CandlestickView(View):
+    def __init__(self) -> None:
         super(CandlestickView, self).__init__()
