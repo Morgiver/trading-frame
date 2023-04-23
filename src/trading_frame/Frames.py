@@ -98,10 +98,10 @@ class Frame:
         self.periods      = []
         self.feeding_type = None
 
-    def _aggregate_to_period(self, raw_data: Tick | Trade) -> None:
+    def define_close_date(self, raw_data):
         """
-        Aggregation method
-        This is the function to override to define an appropriate aggregation method
+        Defining the close date.
+        This method is meant to be overrided
 
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
@@ -110,7 +110,98 @@ class Frame:
         Returns:
             None
         """
-        pass
+        return None
+
+    def is_new_period(self, raw_data) -> bool:
+        """
+        Know if the raw data will start a new period or not.
+        This method is meant to be overrided.
+
+        Parameters:
+            raw_data (Tick | Trade): The raw data to work with.
+                                     It can be a Tick or a Trade.
+
+        Returns:
+            is_new_period (bool): Is this this a new period or not.
+        """
+        return True
+
+    def create_new_period(self, raw_data):
+        """
+        Creating a new period
+
+        Parameters:
+            raw_data (Tick | Trade): The raw data to work with.
+                                     It can be a Tick or a Trade.
+
+        Returns:
+            None
+        """
+        close_date = self.define_close_date(raw_data)
+
+        if self.feeding_type == Tick:
+            # Tick Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume]
+            self.periods.append([raw_data[0], raw_data[1], raw_data[1], raw_data[1], raw_data[1], close_date, 1])
+
+        elif self.feeding_type == Trade:
+            # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
+            buyers = 0
+            sellers = 0
+
+            if raw_data[3]:
+                buyers += 1
+            else:
+                sellers += 1
+
+            self.periods.append([raw_data[0], raw_data[1], raw_data[1], raw_data[1], raw_data[1], close_date, 1, raw_data[2], buyers, sellers])
+
+    def update_period(self, raw_data):
+        """
+        Updating the last period in periods table
+
+        Parameters:
+            raw_data (Tick | Trade): The raw data to work with.
+                                     It can be a Tick or a Trade.
+
+        Returns:
+            None
+        """
+        if raw_data[1] > self.periods[-1][2]:
+            self.periods[-1][2] = raw_data[1]
+
+        if raw_data[1] < self.periods[-1][3]:
+            self.periods[-1][3] = raw_data[1]
+
+        self.periods[-1][4] = raw_data[1]
+        self.periods[-1][6] += 1
+
+        if self.feeding_type == Trade:
+            # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
+            self.periods[-1][7] += raw_data[2]
+
+            if raw_data[3]:
+                self.periods[-1][8] += 1
+            else:
+                self.periods[-1][9] += 1
+
+    def aggregate_to_period(self, raw_data) -> None:
+        """
+        Aggregate new raw data to actual last period or creating a new period
+        with raw data
+
+        Trade and Tick periods are different because Trade raw data provide real volume
+        and side of taker (buy side or sell side).
+
+        Parameters:
+            raw_data (list): The raw data (tick or trade)
+
+        Returns:
+            None
+        """
+        if len(self.periods) < 1 or self.is_new_period(raw_data):
+            self.create_new_period(raw_data)
+        else:
+            self.update_period(raw_data)
 
     def feed(self, raw_data: Tick | Trade) -> None:
         """
@@ -138,7 +229,7 @@ class Frame:
         if len(self.raw_datas) > self.max_raw_data:
             self.raw_datas.pop(0)
 
-        self._aggregate_to_period(raw_data.get_raw())
+        self.aggregate_to_period(raw_data.get_raw())
 
 class TimeFrame(Frame):
     """
@@ -149,7 +240,9 @@ class TimeFrame(Frame):
         Initialization
 
         Parameters:
-            periods_length (int): Maximum Length of every period (in second).
+            periods_length (str): Maximum Length of every period.
+            max_raw_data (int): Maximum length of raw_datas table
+            max_periods  (int): Maximum length of periods table
 
         Returns:
             None
@@ -158,8 +251,6 @@ class TimeFrame(Frame):
         self.length = int(periods_length[0])
         self.alias = periods_length[1]
 
-        print(self.alias)
-
         self.accepted_range = {
             'S': 'second',
             'T': 'minute',
@@ -167,7 +258,7 @@ class TimeFrame(Frame):
             'D': 'day'
         }
 
-    def is_new_period(self, raw_data):
+    def is_new_period(self, raw_data) -> bool:
         """
         Compare the raw data Date to the last period close date and return true
         if it's time to open a new period accordingly to the period length.
@@ -176,14 +267,14 @@ class TimeFrame(Frame):
             raw_data (list): The raw data (tick or trade)
 
         Returns:
-            is_new_period (bool): Is this a new periods or not
+            is_new_period (bool): Is this a new period or not
         """
         if len(self.periods) < 1:
             raise Exception("Periods table need at leat 1 period to compare to.")
 
         return datetime.strptime(raw_data[0], DATE_STR_FORMAT) > datetime.strptime(self.periods[-1][5], DATE_STR_FORMAT)
 
-    def define_close_date(self, raw_data):
+    def define_close_date(self, raw_data) -> str:
         """
         Defining the close date from the raw_data Date.
 
@@ -191,31 +282,71 @@ class TimeFrame(Frame):
             raw_data (list): The raw data (tick or trade)
 
         Returns:
-            close_date (Datetime): The close date for the period
+            close_date (str): The close date for the period
         """
         open_date = datetime.strptime(raw_data[0], DATE_STR_FORMAT)
         zeroing = getattr(open_date, self.accepted_range[self.alias]) % self.length
 
         if self.alias == 'S':
             open_date = open_date.replace(microsecond=0)
-            return (open_date - timedelta(seconds=zeroing)) + timedelta(seconds=self.length, microseconds=-1)
+            close_date = (open_date - timedelta(seconds=zeroing)) + timedelta(seconds=self.length, microseconds=-1)
 
         if self.alias == 'T':
             open_date = open_date.replace(second=0, microsecond=0)
-            return (open_date - timedelta(minutes=zeroing)) + timedelta(minutes=self.length, microseconds=-1)
+            close_date = (open_date - timedelta(minutes=zeroing)) + timedelta(minutes=self.length, microseconds=-1)
 
         if self.alias == 'H':
             open_date = open_date.replace(minute=0, second=0, microsecond=0)
-            return (open_date - timedelta(hours=zeroing)) + timedelta(hours=self.length, microseconds=-1)
+            close_date = (open_date - timedelta(hours=zeroing)) + timedelta(hours=self.length, microseconds=-1)
 
         if self.alias == 'D':
             open_date = open_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            return (open_date - timedelta(days=zeroing)) + timedelta(days=self.length, microseconds=-1)
+            close_date = (open_date - timedelta(days=zeroing)) + timedelta(days=self.length, microseconds=-1)
 
-    def _aggregate_to_period(self, raw_data):
+        return close_date.strftime(DATE_STR_FORMAT)
+
+class CountFrame(Frame):
+    """
+    CountFrame base their data aggregation on number of a selected unit. It can be :
+    - Tick Volume : the number of trades executed (tick_volume)
+    - Real Volume : the volume exchanged (real_volume)
+
+    """
+    def __init__(self, length: int, counted: str = "tick_volume", max_raw_data: int = 1000, max_periods: int = 250) -> None:
         """
-        Aggregate new raw data to actual last period or creating a new period
-        with raw data
+        Initialization
+
+        Parameters:
+            length       (int): Length of maximum unit to count
+            counted      (str): The value to count
+            max_raw_data (int): Maximum length of raw_datas table
+            max_periods  (int): Maximum length of periods table
+        """
+        super(CountFrame, self).__init__(max_raw_data, max_periods)
+        self.length = length
+        self.counted = counted
+
+    def is_new_period(self, raw_data) -> bool:
+        """
+        Know if the raw data will start a new period or not.
+        This method is meant to be overrided.
+
+        Parameters:
+            raw_data (Tick | Trade): The raw data to work with.
+                                     It can be a Tick or a Trade.
+
+        Returns:
+            is_new_period (bool): Is this this a new period or not.
+        """
+        if self.counted == "tick_volume":
+            return self.periods[-1][6] + 1 > self.length
+
+        if self.counted == "real_volume":
+            return self.periods[-1][7] + raw_data[2] > self.length
+
+    def define_close_date(self, raw_data) -> None:
+        """
+        Defining the close date from the raw_data Date.
 
         Parameters:
             raw_data (list): The raw data (tick or trade)
@@ -223,39 +354,7 @@ class TimeFrame(Frame):
         Returns:
             None
         """
-        if len(self.periods) < 1 or self.is_new_period(raw_data):
-            close_date = self.define_close_date(raw_data).strftime(DATE_STR_FORMAT)
+        if len(self.periods) > 0:
+            self.periods[-1][5] = raw_data[0]
 
-            if self.feeding_type == Tick:
-                # Tick Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume]
-                self.periods.append([raw_data[0], raw_data[1], raw_data[1], raw_data[1], raw_data[1], close_date, 1])
-
-            elif self.feeding_type == Trade:
-                # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
-                buyers = 0
-                sellers = 0
-
-                if raw_data[3]:
-                    buyers += 1
-                else:
-                    sellers += 1
-
-                self.periods.append([raw_data[0], raw_data[1], raw_data[1], raw_data[1], raw_data[1], close_date, 1, raw_data[2], buyers, sellers])
-        else:
-            if raw_data[1] > self.periods[-1][2]:
-                self.periods[-1][2] = raw_data[1]
-
-            if raw_data[1] < self.periods[-1][3]:
-                self.periods[-1][3] = raw_data[1]
-
-            self.periods[-1][4] = raw_data[1]
-            self.periods[-1][6] += 1
-
-            if self.feeding_type == Trade:
-                # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
-                self.periods[-1][7] += raw_data[2]
-
-                if raw_data[3]:
-                    self.periods[-1][8] += 1
-                else:
-                    self.periods[-1][9] += 1
+        return None

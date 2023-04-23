@@ -13,7 +13,7 @@ The objective of this package is to manage easely every type of frame, feeded by
 4. Define and build a ViewFactory able to create multiple views with their frame.
 5. Define and build a ViewManager able to stack multiple named views and manage them. Managing views is create, update, delete and feed.
 6. ~~Define and build TimeFrame to be able to handle time based periods~~
-7. Define and build CountFrame to be able to handle count based ticks or trades periods
+7. ~~Define and build CountFrame to be able to handle count based ticks or trades periods~~
 
 ### Idea for Iteration 1
 1. Allow Candle raw data for Frame.

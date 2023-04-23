@@ -1,5 +1,7 @@
 import unittest
+from types import NoneType
 
+# Custom Python
 from src.trading_frame.Frames import *
 
 class TestTick(unittest.TestCase):
@@ -35,25 +37,25 @@ class TestTimeFrame(unittest.TestCase):
         tf = TimeFrame(periods_length='5S')
         date_to_compare = tf.define_close_date(Trade('01/01/2000, 00:02:12', 1.0, 1.0, True).get_raw())
         compare_time = datetime.strptime('01/01/2000, 00:02:15', DATE_STR_FORMAT) - timedelta(microseconds=1)
-        self.assertEqual(date_to_compare, compare_time)
+        self.assertEqual(date_to_compare, compare_time.strftime(DATE_STR_FORMAT))
 
     def test_define_close_date_minutes(self):
         tf = TimeFrame(periods_length='5T')
         date_to_compare = tf.define_close_date(Trade('01/01/2000, 00:02:12', 1.0, 1.0, True).get_raw())
         compare_time = datetime.strptime('01/01/2000, 00:05:00', DATE_STR_FORMAT) - timedelta(microseconds=1)
-        self.assertEqual(date_to_compare, compare_time)
+        self.assertEqual(date_to_compare, compare_time.strftime(DATE_STR_FORMAT))
 
     def test_define_close_date_hours(self):
         tf = TimeFrame(periods_length='1H')
         date_to_compare = tf.define_close_date(Trade('01/01/2000, 00:02:12', 1.0, 1.0, True).get_raw())
         compare_time = datetime.strptime('01/01/2000, 01:00:00', DATE_STR_FORMAT) - timedelta(microseconds=1)
-        self.assertEqual(date_to_compare, compare_time)
+        self.assertEqual(date_to_compare, compare_time.strftime(DATE_STR_FORMAT))
 
     def test_define_close_date_days(self):
         tf = TimeFrame(periods_length='1D')
         date_to_compare = tf.define_close_date(Trade('01/01/2000, 00:02:12', 1.0, 1.0, True).get_raw())
         compare_time = datetime.strptime('01/02/2000, 00:00:00', DATE_STR_FORMAT) - timedelta(microseconds=1)
-        self.assertEqual(date_to_compare, compare_time)
+        self.assertEqual(date_to_compare, compare_time.strftime(DATE_STR_FORMAT))
 
     def test_is_new_period(self):
         tf = TimeFrame()
@@ -90,3 +92,32 @@ class TestTimeFrame(unittest.TestCase):
         self.assertEqual(tf.periods, [['01/01/2000, 00:00:00', 1.0, 1.5, 0.5, 1.25, '01/01/2000, 00:04:59', 4]])
         tf.feed(Tick('01/01/2000, 00:05:00', 1.35, 1.45, 1.0, 2.0))
         self.assertEqual(tf.periods, [['01/01/2000, 00:00:00', 1.0, 1.5, 0.5, 1.25, '01/01/2000, 00:04:59', 4], ['01/01/2000, 00:05:00', 1.35, 1.35, 1.35, 1.35, '01/01/2000, 00:09:59', 1]])
+
+class TestCountFrame(unittest.TestCase):
+    def test_is_new_period_tick_volume(self):
+        cf = CountFrame(5, "tick_volume")
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        cf.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
+        self.assertEqual(cf.periods[0][6], 5)
+
+    def test_is_new_period_real_volume(self):
+        cf = CountFrame(5, "real_volume")
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        self.assertEqual(cf.periods[0][7], 5.0)
+
+    def test_define_close_date(self):
+        cf = CountFrame(1, "real_volume")
+        result = cf.define_close_date(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True).get_raw())
+        self.assertEqual(type(result), NoneType)
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        cf.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
+        self.assertEqual(cf.periods[0][5], '01/01/2000, 00:00:00')
