@@ -1,8 +1,11 @@
+import sys
 import unittest
 from types import NoneType
 
+sys.path.append('./src')
+
 # Custom Python
-from src.trading_frame.Frames import *
+from trading_frame.Frames import *
 
 class TestTick(unittest.TestCase):
     def test_initialization(self):
