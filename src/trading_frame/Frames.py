@@ -248,8 +248,8 @@ class TimeFrame(Frame):
             None
         """
         super(TimeFrame, self).__init__(max_raw_data, max_periods)
-        self.length = int(periods_length[0])
-        self.alias = periods_length[1]
+        self.length = int(periods_length[0:-1])
+        self.alias = periods_length[-1]
 
         self.accepted_range = {
             'S': 'second',
