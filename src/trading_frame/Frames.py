@@ -226,10 +226,13 @@ class Frame:
 
         self.raw_datas.append(raw_data.get_raw())
 
-        if len(self.raw_datas) > self.max_raw_data:
+        if self.max_raw_data <= len(self.raw_datas):
             self.raw_datas.pop(0)
 
         self.aggregate_to_period(raw_data.get_raw())
+
+        if self.max_periods <= len(self.periods):
+            self.periods.pop(0)
 
 class TimeFrame(Frame):
     """
