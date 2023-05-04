@@ -258,7 +258,7 @@ class TimeFrame(Frame):
     """
     TimeFrame base their data aggregation on Open Date or Close Date.
     """
-    def __init__(self, periods_length: str = '5T', max_raw_data: int = 1000, max_periods: int = 250) -> None:
+    def __init__(self, periods_length: str = '5T', max_periods: int = 250) -> None:
         """
         Initialization
 
@@ -270,7 +270,7 @@ class TimeFrame(Frame):
         Returns:
             None
         """
-        super(TimeFrame, self).__init__(max_raw_data, max_periods)
+        super(TimeFrame, self).__init__(max_periods)
         self.length = int(periods_length[0:-1])
         self.alias = periods_length[-1]
 
@@ -335,7 +335,7 @@ class CountFrame(Frame):
     - Real Volume : the volume exchanged (real_volume)
 
     """
-    def __init__(self, length: int, counted: str = "tick_volume", max_raw_data: int = 1000, max_periods: int = 250) -> None:
+    def __init__(self, length: int, counted: str = "tick_volume", max_periods: int = 250) -> None:
         """
         Initialization
 
@@ -345,7 +345,7 @@ class CountFrame(Frame):
             max_raw_data (int): Maximum length of raw_datas table
             max_periods  (int): Maximum length of periods table
         """
-        super(CountFrame, self).__init__(max_raw_data, max_periods)
+        super(CountFrame, self).__init__(max_periods)
         self.length = length
         self.counted = counted
 
