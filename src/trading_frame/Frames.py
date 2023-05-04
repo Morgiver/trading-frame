@@ -1,3 +1,5 @@
+import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 
 DATE_STR_FORMAT = '%m/%d/%Y, %H:%M:%S'
@@ -97,6 +99,21 @@ class Frame:
         self.raw_datas    = []
         self.periods      = []
         self.feeding_type = None
+
+    def to_numpy(self) -> np.ndarray:
+        """ Returning a periods numpy array"""
+        return np.array(self.periods)
+
+    def to_pandas(self) -> pd.DataFrame:
+        """ Returning a Pandas DataFrame """
+        columns = None
+
+        if self.feeding_type == Trade:
+            columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Close Date', 'Tick Volume', 'Volume', 'Buyers', 'Sellers']
+        else:
+            columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Close Date', 'Volume']
+
+        return pd.DataFrame(self.periods, columns=columns)
 
     def define_close_date(self, raw_data):
         """
