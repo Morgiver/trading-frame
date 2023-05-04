@@ -243,10 +243,10 @@ class Frame:
             raw_data (Tick | Trade): The raw data to work with.
                                      It can be a Tick or a Trade.
         """
-        if len(self.raw_datas) > 0 and type(raw_data) != self.feeding_type:
+        if len(self.periods) > 0 and type(raw_data) != self.feeding_type:
             raise Exception(f"Raw Data feeded is not a {self.feeding_type} type")
 
-        if len(self.raw_datas) < 1:
+        if len(self.periods) < 1:
             self.feeding_type = type(raw_data)
 
         self.aggregate_to_period(raw_data.get_raw())
