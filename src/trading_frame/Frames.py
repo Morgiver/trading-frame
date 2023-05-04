@@ -1,10 +1,12 @@
+import abc
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
 DATE_STR_FORMAT = '%m/%d/%Y, %H:%M:%S'
 
-class RawDataInterface:
+class RawDataInterface(abc.ABC):
+    @abc.abstractmethod
     def get_raw(self) -> list:
         """ Return a list of raw parameters """
 
@@ -28,9 +30,6 @@ class Tick(RawDataInterface):
             ask_price  (float): Best price of the Ask side in the orderbook
             bid_volume (float): Volume at the best price of the Bid side in the orderbook
             ask_volume (float): Volume at the best price of the Ask side in the orderbook
-
-        Returns:
-            None
         """
         super(Tick, self).__init__()
 
@@ -41,7 +40,7 @@ class Tick(RawDataInterface):
         self.ask_volume = ask_volume
 
         if self.bid_price > self.ask_price:
-            raise Execption("Bid price should be lower or equal to the Ask price")
+            raise Exception("Bid price should be lower or equal to the Ask price")
 
     def get_raw(self):
         return [self.date, self.bid_price, self.ask_price, self.bid_volume, self.ask_volume]
@@ -62,8 +61,6 @@ class Trade(RawDataInterface):
             volume (float): The number of assets traded
             side    (bool): The side of execution.
                             False the Taker was Selling, True the Taker was Buying
-        Returns:
-            None
         """
         super(Trade, self).__init__()
 
@@ -75,6 +72,22 @@ class Trade(RawDataInterface):
     def get_raw(self):
         return [self.date, self.price, self.volume, self.side]
 
+class Candle(RawDataInterface):
+    def __init__(self) -> None:
+        """
+        A Candle is an aggregation of executed trades between a period of time or count.
+        """
+        super(Candle, self).__init__()
+        self.date = date
+        self.open = _open
+        self.high = high
+        self.low  = low
+        self.close = close
+        self.volume = volume
+
+    def get_raw(self):
+        return [self.date, self.open, self.high, self.low, self.close, self.volume]
+
 class Frame:
     """
     A Frame is a respresentation of aggregated raw trading datas.
@@ -83,20 +96,15 @@ class Frame:
 
     For example a TimeFrame of 5-minute periods, or a VolumeFrame of 1000-units periods
     """
-    def __init__(self, max_raw_data: int = 1000, max_periods: int = 250) -> None:
+    def __init__(self, max_periods: int = 250) -> None:
         """
         Initialization method
 
         Parameters:
             max_raw_data (int): Maximum length of raw_datas list
             max_periods  (int): Maximum length of periods list
-
-        Returns:
-            None
         """
-        self.max_raw_data = max_raw_data
         self.max_periods  = max_periods
-        self.raw_datas    = []
         self.periods      = []
         self.feeding_type = None
 
@@ -123,9 +131,6 @@ class Frame:
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
                                      It can be a Tick or a Trade.
-
-        Returns:
-            None
         """
         return None
 
@@ -143,16 +148,13 @@ class Frame:
         """
         return True
 
-    def create_new_period(self, raw_data):
+    def create_new_period(self, raw_data) -> None:
         """
         Creating a new period
 
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
                                      It can be a Tick or a Trade.
-
-        Returns:
-            None
         """
         close_date = self.define_close_date(raw_data)
 
@@ -172,34 +174,45 @@ class Frame:
 
             self.periods.append([raw_data[0], raw_data[1], raw_data[1], raw_data[1], raw_data[1], close_date, 1, raw_data[2], buyers, sellers])
 
-    def update_period(self, raw_data):
+        elif self.feeding_type == Candle:
+            self.periods.append([raw_data[0], raw_data[1], raw_data[2], raw_data[3], raw_data[4], close_date, raw_data[5]])
+
+    def update_period(self, raw_data) -> None:
         """
         Updating the last period in periods table
 
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
                                      It can be a Tick or a Trade.
-
-        Returns:
-            None
         """
-        if raw_data[1] > self.periods[-1][2]:
-            self.periods[-1][2] = raw_data[1]
+        if self.feeding_type == Tick or self.feeding_type == Trade:
+            if raw_data[1] > self.periods[-1][2]:
+                self.periods[-1][2] = raw_data[1]
 
-        if raw_data[1] < self.periods[-1][3]:
-            self.periods[-1][3] = raw_data[1]
+            if raw_data[1] < self.periods[-1][3]:
+                self.periods[-1][3] = raw_data[1]
 
-        self.periods[-1][4] = raw_data[1]
-        self.periods[-1][6] += 1
+            self.periods[-1][4] = raw_data[1]
+            self.periods[-1][6] += 1
 
-        if self.feeding_type == Trade:
-            # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
-            self.periods[-1][7] += raw_data[2]
+            if self.feeding_type == Trade:
+                # Trade Period = [open_date, open_price, high_price, low_price, close_price, close_date, tick_volume, real_volume, buyers, sellers]
+                self.periods[-1][7] += raw_data[2]
 
-            if raw_data[3]:
-                self.periods[-1][8] += 1
-            else:
-                self.periods[-1][9] += 1
+                if raw_data[3]:
+                    self.periods[-1][8] += 1
+                else:
+                    self.periods[-1][9] += 1
+
+        elif self.feeding_type == Candle:
+            if raw_data[2] > self.periods[-1][2]:
+                self.periods[-1][2] = raw_data[2]
+
+            if raw_data[3] < self.periods[-1][3]:
+                self.periods[-1][3] = raw_data[3]
+
+            self.periods[-1][4] = raw_data[4]
+            self.periods[-1][6] = raw_data[5]
 
     def aggregate_to_period(self, raw_data) -> None:
         """
@@ -211,9 +224,6 @@ class Frame:
 
         Parameters:
             raw_data (list): The raw data (tick or trade)
-
-        Returns:
-            None
         """
         if len(self.periods) < 1 or self.is_new_period(raw_data):
             self.create_new_period(raw_data)
@@ -232,19 +242,12 @@ class Frame:
         Parameters:
             raw_data (Tick | Trade): The raw data to work with.
                                      It can be a Tick or a Trade.
-        Returns:
-            None
         """
         if len(self.raw_datas) > 0 and type(raw_data) != self.feeding_type:
             raise Exception(f"Raw Data feeded is not a {self.feeding_type} type")
 
         if len(self.raw_datas) < 1:
             self.feeding_type = type(raw_data)
-
-        self.raw_datas.append(raw_data.get_raw())
-
-        if self.max_raw_data < len(self.raw_datas):
-            self.raw_datas.pop(0)
 
         self.aggregate_to_period(raw_data.get_raw())
 
@@ -370,9 +373,6 @@ class CountFrame(Frame):
 
         Parameters:
             raw_data (list): The raw data (tick or trade)
-
-        Returns:
-            None
         """
         if len(self.periods) > 0:
             self.periods[-1][5] = raw_data[0]

@@ -11,3 +11,7 @@ The objective of this package is to manage easely every type of frame, feeded by
 2. Define and build a View class to inherit and build other View type with. Different type of view are : Simple Bar, Candlestick, Renko, Heiken Ashi, Kagi, Point and Figures, and I'm sure many other. For this iteration 0, one or two View should be cool. View should simply exploit the data organised in it's Frame.
 3. Define and build a ViewFactory able to create multiple views with their frame.
 4. Define and build a ViewManager able to stack multiple named views and manage them. Managing views is create, update, delete and feed.
+
+## TODO List :
+1. ~~Allow Candle raw data~~
+2. Build unit tests for Candle raw Data logic
