@@ -230,7 +230,7 @@ class Frame:
         else:
             self.update_period(raw_data)
 
-    def feed(self, raw_data: Tick | Trade) -> None:
+    def feed(self, raw_data: Tick | Trade | Candle) -> None:
         """
         Feeding the Frame with raw trading data.
 
