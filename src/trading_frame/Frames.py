@@ -73,7 +73,7 @@ class Trade(RawDataInterface):
         return [self.date, self.price, self.volume, self.side]
 
 class Candle(RawDataInterface):
-    def __init__(self) -> None:
+    def __init__(self, date: str, _open: float, high: float, low: float, close: float, volume: float) -> None:
         """
         A Candle is an aggregation of executed trades between a period of time or count.
         """
