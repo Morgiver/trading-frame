@@ -101,7 +101,6 @@ class Frame:
         Initialization method
 
         Parameters:
-            max_raw_data (int): Maximum length of raw_datas list
             max_periods  (int): Maximum length of periods list
         """
         self.max_periods  = max_periods
@@ -258,6 +257,13 @@ class TimeFrame(Frame):
     """
     TimeFrame base their data aggregation on Open Date or Close Date.
     """
+    accepted_range = {
+        'S': 'second',
+        'T': 'minute',
+        'H': 'hour',
+        'D': 'day'
+    }
+    
     def __init__(self, periods_length: str = '5T', max_periods: int = 250) -> None:
         """
         Initialization
@@ -273,13 +279,6 @@ class TimeFrame(Frame):
         super(TimeFrame, self).__init__(max_periods)
         self.length = int(periods_length[0:-1])
         self.alias = periods_length[-1]
-
-        self.accepted_range = {
-            'S': 'second',
-            'T': 'minute',
-            'H': 'hour',
-            'D': 'day'
-        }
 
     def is_new_period(self, raw_data) -> bool:
         """

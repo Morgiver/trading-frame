@@ -23,15 +23,15 @@ class TestTrade(unittest.TestCase):
 
 class TestFrame(unittest.TestCase):
     def test_feed(self):
-        f = Frame(max_raw_data = 1)
+        f = Frame(max_periods = 1)
         f.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
-        self.assertEqual(len(f.raw_datas), 1)
+        self.assertEqual(len(f.periods), 1)
         f.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
-        self.assertEqual(len(f.raw_datas), 1)
+        self.assertEqual(len(f.periods), 1)
 
     def test_feed_raising(self):
         with self.assertRaises(Exception):
-            f = Frame(max_raw_data = 1)
+            f = Frame(max_periods = 1)
             f.feed(Tick('01/01/2000, 00:00:00', 1.0, 1.1, 1.0, 2.0))
             f.feed(Trade('01/01/2000, 00:00:00', 1.0, 1.0, True))
 
