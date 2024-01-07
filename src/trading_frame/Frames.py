@@ -120,7 +120,10 @@ class Frame:
         else:
             columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Close Date', 'Volume']
 
-        return pd.DataFrame(self.periods, columns=columns)
+        df = pd.DataFrame(self.periods, columns=columns)
+        df.set_index(pd.DatetimeIndex(df['Date']), inplace = True)
+
+        return 
 
     def define_close_date(self, raw_data):
         """
