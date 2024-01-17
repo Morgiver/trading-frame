@@ -103,9 +103,19 @@ class Frame:
         Parameters:
             max_periods  (int): Maximum length of periods list
         """
-        self.max_periods  = max_periods
-        self.periods      = []
-        self.feeding_type = None
+        self.max_periods       = max_periods
+        self.periods           = []
+        self.feeding_type      = None
+        self.on_close_function = None
+
+    def set_on_close_function(self, fn):
+        """ Set the on close function """
+        self.on_close_function = fn
+
+    def on_close(self):
+        """ Execute if the on close function is set """
+        if self.on_close_function:
+            self.on_close_function(self)
 
     def to_numpy(self) -> np.ndarray:
         """ Returning a periods numpy array"""
@@ -228,6 +238,10 @@ class Frame:
             raw_data (list): The raw data (tick or trade)
         """
         if len(self.periods) < 1 or self.is_new_period(raw_data):
+            if len(self.periods) > 1:
+                """ Executing the on close function """
+                self.on_close()
+
             self.create_new_period(raw_data)
         else:
             self.update_period(raw_data)
