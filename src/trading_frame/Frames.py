@@ -133,7 +133,7 @@ class Frame:
         df = pd.DataFrame(self.periods, columns=columns)
         df.set_index(pd.DatetimeIndex(df['Date']), inplace = True)
 
-        return 
+        return df
 
     def define_close_date(self, raw_data):
         """
