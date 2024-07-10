@@ -3,11 +3,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
-DATE_STR_FORMAT = '%m/%d/%Y, %H:%M:%S'
-
-def set_date_format(new_format: str):
-    DATE_STR_FORMAT = new_format
-
 class RawDataInterface(abc.ABC):
     @abc.abstractmethod
     def get_raw(self) -> list:
@@ -99,13 +94,14 @@ class Frame:
 
     For example a TimeFrame of 5-minute periods, or a VolumeFrame of 1000-units periods
     """
-    def __init__(self, max_periods: int = 250) -> None:
+    def __init__(self, max_periods: int = 250, date_format: str = '%m/%d/%Y, %H:%M:%S') -> None:
         """
         Initialization method
 
         Parameters:
             max_periods  (int): Maximum length of periods list
         """
+        self.date_format       = date_format
         self.max_periods       = max_periods
         self.periods           = []
         self.feeding_type      = None
@@ -284,7 +280,7 @@ class TimeFrame(Frame):
         'D': 'day'
     }
 
-    def __init__(self, periods_length: str = '5T', max_periods: int = 250) -> None:
+    def __init__(self, periods_length: str = '5T', max_periods: int = 250, date_format: str = '%m/%d/%Y, %H:%M:%S') -> None:
         """
         Initialization
 
@@ -296,7 +292,7 @@ class TimeFrame(Frame):
         Returns:
             None
         """
-        super(TimeFrame, self).__init__(max_periods)
+        super(TimeFrame, self).__init__(max_periods, date_format)
         self.length = int(periods_length[0:-1])
         self.alias = periods_length[-1]
 
@@ -314,7 +310,7 @@ class TimeFrame(Frame):
         if len(self.periods) < 1:
             raise Exception("Periods table need at leat 1 period to compare to.")
 
-        return datetime.strptime(raw_data[0], DATE_STR_FORMAT) > datetime.strptime(self.periods[-1][5], DATE_STR_FORMAT)
+        return datetime.strptime(raw_data[0], self.date_format) > datetime.strptime(self.periods[-1][5], self.date_format)
 
     def define_close_date(self, raw_data) -> str:
         """
@@ -326,7 +322,7 @@ class TimeFrame(Frame):
         Returns:
             close_date (str): The close date for the period
         """
-        open_date = datetime.strptime(raw_data[0], DATE_STR_FORMAT)
+        open_date = datetime.strptime(raw_data[0], self.date_format)
         zeroing = getattr(open_date, self.accepted_range[self.alias]) % self.length
 
         if self.alias == 'S':
@@ -345,7 +341,7 @@ class TimeFrame(Frame):
             open_date = open_date.replace(hour=0, minute=0, second=0, microsecond=0)
             close_date = (open_date - timedelta(days=zeroing)) + timedelta(days=self.length, microseconds=-1)
 
-        return close_date.strftime(DATE_STR_FORMAT)
+        return close_date.strftime(self.date_format)
 
 class CountFrame(Frame):
     """
