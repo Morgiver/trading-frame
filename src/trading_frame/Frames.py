@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 
 DATE_STR_FORMAT = '%m/%d/%Y, %H:%M:%S'
 
+def set_date_format(new_format: str):
+    DATE_STR_FORMAT = new_format
+
 class RawDataInterface(abc.ABC):
     @abc.abstractmethod
     def get_raw(self) -> list:
@@ -280,7 +283,7 @@ class TimeFrame(Frame):
         'H': 'hour',
         'D': 'day'
     }
-    
+
     def __init__(self, periods_length: str = '5T', max_periods: int = 250) -> None:
         """
         Initialization
