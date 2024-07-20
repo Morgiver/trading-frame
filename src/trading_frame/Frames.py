@@ -280,7 +280,7 @@ class TimeFrame(Frame):
         'D': 'day'
     }
 
-    def __init__(self, periods_length: str = '5T', max_periods: int = 250, date_format: str = '%m/%d/%Y, %H:%M:%S') -> None:
+    def __init__(self, periods_length: str = '5T', max_periods: int = 250, date_format: str = '%Y-%m-%dT%H:%M:%S.%fZ') -> None:
         """
         Initialization
 
