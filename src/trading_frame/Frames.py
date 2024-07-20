@@ -49,7 +49,7 @@ class Trade(RawDataInterface):
     One of the two actors is the Maker, the one who propose volume at a price level
     and the other actor is the Taker, the one who agreed to pay at this price market level
     """
-    def __init__(self, date: str, price: float, volume: float, taker: bool) -> None:
+    def __init__(self, date: str, price: float, volume: float, side: bool) -> None:
         """
         Initialization
 
@@ -65,7 +65,7 @@ class Trade(RawDataInterface):
         self.date = date
         self.price = price
         self.volume = volume
-        self.side = taker
+        self.side = side
 
     def get_raw(self):
         return [self.date, self.price, self.volume, self.side]
