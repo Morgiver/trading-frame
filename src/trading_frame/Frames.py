@@ -130,7 +130,7 @@ class Frame:
             columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Close Date', 'Volume']
 
         df = pd.DataFrame(self.periods, columns=columns)
-        df.set_index(pd.DatetimeIndex(df['Date']), inplace = True)
+        df.set_index('Date', inplace = True)
 
         return df
 
