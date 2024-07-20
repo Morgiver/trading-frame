@@ -94,7 +94,7 @@ class Frame:
 
     For example a TimeFrame of 5-minute periods, or a VolumeFrame of 1000-units periods
     """
-    def __init__(self, max_periods: int = 250, date_format: str = '%m/%d/%Y, %H:%M:%S') -> None:
+    def __init__(self, max_periods: int = 250, date_format: str = '%Y-%m-%dT%H:%M:%S.%fZ') -> None:
         """
         Initialization method
 
