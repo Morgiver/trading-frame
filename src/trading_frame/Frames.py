@@ -106,6 +106,22 @@ class Frame:
         self.periods           = []
         self.feeding_type      = None
         self.on_close_function = None
+        self.events_channels   = {
+            'update': [],
+            'close': []
+        }
+
+    def emit(self, channel: str, *args, **kwargs):
+        """ Emit and event in the specified channel """
+        if channel in self.events_channels:
+            for channel_function in self.events_channels[channel]:
+                # Executing the function
+                channel_function(*args, **kwargs)
+
+    def on(self, channel: str, func):
+        """ Add a function to execute when the channel event is emited """
+        if channel in self.events_channels:
+            self.events_channels[channel].append(func)
 
     def set_on_close_function(self, fn):
         """ Set the on close function """
@@ -226,6 +242,8 @@ class Frame:
             self.periods[-1][4] = raw_data[4]
             self.periods[-1][6] = raw_data[5]
 
+        self.emit('update', self)
+
     def aggregate_to_period(self, raw_data) -> None:
         """
         Aggregate new raw data to actual last period or creating a new period
@@ -240,7 +258,10 @@ class Frame:
         if len(self.periods) < 1 or self.is_new_period(raw_data):
             if len(self.periods) > 1:
                 """ Executing the on close function """
-                self.on_close()
+                self.on_close() # Deprecated
+
+                # Emitting the close event
+                self.emit('close', self)
 
             self.create_new_period(raw_data)
         else:
