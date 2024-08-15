@@ -146,7 +146,7 @@ class Frame:
             columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Close Date', 'Volume']
 
         df = pd.DataFrame(self.periods, columns=columns)
-        df['Date'] = pd.to_datetime(df['Date'], unit='ms')
+        df['Date'] = pd.to_datetime(df['Date'])
         df.set_index('Date', inplace = True)
 
         return df
