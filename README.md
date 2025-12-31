@@ -12,7 +12,8 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **Period**: Aggregated data over a time range with Decimal precision for volumes
 - **Frame**: Base class for data aggregation with event system
 - **TimeFrame**: Time-based period aggregation (seconds, minutes, hours, days, weeks, months, years)
-- **Export**: Convert frames to NumPy arrays or Pandas DataFrames
+- **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, and more)
+- **Export**: Convert frames to NumPy arrays or Pandas DataFrames with indicator columns
 
 ## Installation
 
@@ -74,16 +75,54 @@ frame.on('new_period', on_new_period)
 frame.on('close', on_period_close)
 ```
 
+### Technical Indicators
+
+```python
+from trading_frame.indicators.momentum.rsi import RSI
+from trading_frame.indicators.momentum.macd import MACD
+from trading_frame.indicators.trend.sma import SMA
+from trading_frame.indicators.trend.bollinger import BollingerBands
+
+# Add single-column indicator
+frame.add_indicator(RSI(length=14), 'RSI_14')
+
+# Add multi-column indicator
+frame.add_indicator(
+    MACD(fast=12, slow=26, signal=9),
+    ['MACD_LINE', 'MACD_SIGNAL', 'MACD_HIST']
+)
+
+# Add moving averages
+frame.add_indicator(SMA(period=20), 'SMA_20')
+frame.add_indicator(SMA(period=50), 'SMA_50')
+
+# Add Bollinger Bands
+frame.add_indicator(
+    BollingerBands(period=20, std_dev=2),
+    ['BB_UPPER', 'BB_MIDDLE', 'BB_LOWER']
+)
+
+# Access indicator values
+for period in frame.periods:
+    print(f"RSI: {period.RSI_14}, SMA20: {period.SMA_20}")
+
+# Dependent indicators (indicator calculated from another indicator)
+frame.add_indicator(SMA(period=5, source='RSI_14'), 'RSI_SMA')
+
+# Remove indicator
+frame.remove_indicator('RSI_14')
+```
+
 ### Export to NumPy/Pandas
 
 ```python
-# Export to NumPy array
+# Export to NumPy array (includes indicators)
 import numpy as np
-data = frame.to_numpy()  # Returns [[open, high, low, close, volume], ...]
+data = frame.to_numpy()  # Returns [[open, high, low, close, volume, RSI_14, SMA_20], ...]
 
-# Export to Pandas DataFrame
+# Export to Pandas DataFrame (includes indicators)
 import pandas as pd
-df = frame.to_pandas()  # Returns DataFrame with OHLCV columns
+df = frame.to_pandas()  # Returns DataFrame with OHLCV + indicator columns
 print(df.head())
 ```
 
@@ -149,12 +188,18 @@ trading-frame/
 │   ├── candle.py      # OHLCV data structure
 │   ├── period.py      # Aggregated period
 │   ├── frame.py       # Base frame class
-│   └── timeframe.py   # Time-based frame
+│   ├── timeframe.py   # Time-based frame
+│   └── indicators/    # Technical indicators
+│       ├── base.py    # Base indicator class
+│       ├── momentum/  # RSI, MACD, etc.
+│       ├── trend/     # SMA, Bollinger Bands, etc.
+│       └── volume/    # Volume indicators
 ├── tests/
 │   ├── test_candle.py
 │   ├── test_period.py
 │   ├── test_frame.py
-│   └── test_timeframe.py
+│   ├── test_timeframe.py
+│   └── test_indicators.py
 └── pyproject.toml
 ```
 
