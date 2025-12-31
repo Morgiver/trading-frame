@@ -116,11 +116,13 @@ class TimeFrame(Frame):
                         timedelta(hours=self.length, microseconds=-1)
 
         elif self.alias == 'D':
-            # Days
+            # Days - Use days since epoch for correct alignment
             open_date = open_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            zeroing = open_date.day % self.length
-            close_date = (open_date - timedelta(days=zeroing)) + \
-                        timedelta(days=self.length, microseconds=-1)
+            epoch = datetime(1970, 1, 1)
+            days_since_epoch = (open_date - epoch).days
+            zeroing = days_since_epoch % self.length
+            aligned_date = open_date - timedelta(days=zeroing)
+            close_date = aligned_date + timedelta(days=self.length, microseconds=-1)
 
         elif self.alias == 'W':
             # Weeks (Monday = 0, Sunday = 6)

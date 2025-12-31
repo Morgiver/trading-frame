@@ -1,6 +1,7 @@
 """Period data structure for aggregated trading data."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ class Period:
             'high_price': None,
             'low_price': None,
             'close_price': None,
-            'volume': 0.0
+            'volume': Decimal('0')
         }
 
     def __getattr__(self, name: str):
@@ -95,7 +96,7 @@ class Period:
         # Always update close price to latest candle's close
         self.close_price = candle.close_price
 
-        # Accumulate volume
+        # Accumulate volume using Decimal for precision
         self.volume += candle.volume
 
     def to_dict(self) -> dict:
@@ -106,3 +107,19 @@ class Period:
             Dictionary containing all period data
         """
         return self._data.copy()
+
+    def to_numpy(self):
+        """
+        Convert Period to numpy array.
+
+        Returns:
+            numpy.ndarray: Array with [open, high, low, close, volume]
+        """
+        import numpy as np
+        return np.array([
+            float(self.open_price) if self.open_price is not None else np.nan,
+            float(self.high_price) if self.high_price is not None else np.nan,
+            float(self.low_price) if self.low_price is not None else np.nan,
+            float(self.close_price) if self.close_price is not None else np.nan,
+            float(self.volume)
+        ], dtype=np.float64)

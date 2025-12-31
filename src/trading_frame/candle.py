@@ -1,6 +1,7 @@
 """Candle data structure for trading data."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Union
 
 
@@ -20,7 +21,7 @@ class Candle:
         high: float,
         low: float,
         close: float,
-        volume: float,
+        volume: Union[float, Decimal],
         date_format: str = '%Y-%m-%dT%H:%M:%S.%fZ'
     ) -> None:
         """
@@ -32,7 +33,7 @@ class Candle:
             high: Highest price during the period
             low: Lowest price during the period
             close: Closing price
-            volume: Total volume traded
+            volume: Total volume traded (supports Decimal for precision)
             date_format: Format string for date parsing (if date is str)
 
         Raises:
@@ -65,14 +66,20 @@ class Candle:
         if high < max(open, close) or low > min(open, close):
             raise ValueError("High/Low must contain open and close prices")
 
-        if volume < 0:
+        # Convert volume to Decimal for precision
+        if isinstance(volume, Decimal):
+            volume_decimal = volume
+        else:
+            volume_decimal = Decimal(str(volume))
+
+        if volume_decimal < 0:
             raise ValueError("Volume cannot be negative")
 
         self.open_price = float(open)
         self.high_price = float(high)
         self.low_price = float(low)
         self.close_price = float(close)
-        self.volume = float(volume)
+        self.volume = volume_decimal
 
     def __repr__(self) -> str:
         """String representation of the Candle."""

@@ -149,3 +149,39 @@ class Frame:
         # Maintain max_periods limit
         if len(self.periods) > self.max_periods:
             self.periods.pop(0)
+
+    def to_numpy(self):
+        """
+        Convert all periods to numpy array.
+
+        Returns:
+            numpy.ndarray: 2D array where each row is [open, high, low, close, volume]
+        """
+        import numpy as np
+        if not self.periods:
+            return np.array([], dtype=np.float64).reshape(0, 5)
+        
+        return np.array([period.to_numpy() for period in self.periods], dtype=np.float64)
+
+    def to_pandas(self):
+        """
+        Convert all periods to pandas DataFrame.
+
+        Returns:
+            pandas.DataFrame: DataFrame with columns [open_date, close_date, open_price, 
+                            high_price, low_price, close_price, volume]
+        """
+        import pandas as pd
+        if not self.periods:
+            return pd.DataFrame(columns=[
+                'open_date', 'close_date', 'open_price', 
+                'high_price', 'low_price', 'close_price', 'volume'
+            ])
+        
+        data = [period.to_dict() for period in self.periods]
+        df = pd.DataFrame(data)
+        
+        # Convert volume from Decimal to float for pandas compatibility
+        df['volume'] = df['volume'].astype(float)
+        
+        return df
