@@ -63,6 +63,15 @@ class SMA(Indicator):
         """SMA depends on the source column."""
         return [self.source]
 
+    def get_normalization_type(self) -> str:
+        """
+        SMA normalization depends on source.
+        If source is price, use price-based. Otherwise use minmax.
+        """
+        if self.source in ['open_price', 'high_price', 'low_price', 'close_price']:
+            return 'price'
+        return 'minmax'
+
     def calculate(self, periods: List['Period'], index: int) -> Optional[float]:
         """
         Calculate SMA for the period at index.

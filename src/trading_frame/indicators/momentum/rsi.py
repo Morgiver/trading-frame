@@ -55,6 +55,14 @@ class RSI(Indicator):
         """RSI depends on the source column."""
         return [self.source]
 
+    def get_normalization_type(self) -> str:
+        """RSI uses fixed range normalization (0-100)."""
+        return 'fixed'
+
+    def get_fixed_range(self) -> tuple:
+        """RSI range is always 0-100."""
+        return (0.0, 100.0)
+
     def calculate(self, periods: List['Period'], index: int) -> Optional[float]:
         """
         Calculate RSI for the period at index.

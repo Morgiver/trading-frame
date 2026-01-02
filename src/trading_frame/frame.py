@@ -377,3 +377,134 @@ class Frame:
                 df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
 
         return df
+
+    def to_normalize(self):
+        """
+        Convert all periods to normalized numpy array.
+
+        Normalization strategies:
+        - OHLC + Price-based indicators: Unified Min-Max across OHLC and all
+          price-based indicators (SMA, Bollinger Bands, etc.)
+          This ensures consistent scaling when indicators can exceed price range.
+        - Volume: Independent Min-Max normalization across all volumes
+        - Indicators: Each indicator defines its own normalization strategy
+          * RSI: Fixed range 0-100 → [0, 1]
+          * SMA (price-based): Shares unified price min-max range
+          * MACD: Min-Max on its own values
+          * Bollinger Bands: Shares unified price min-max range
+
+        Returns:
+            numpy.ndarray: 2D array with normalized values in range [0, 1]
+                          (price-based indicators may slightly exceed [0,1] if
+                          their values extend beyond OHLC before unification)
+        """
+        import numpy as np
+
+        if not self.periods:
+            n_cols = 5 + len(self._get_all_indicator_columns())
+            return np.array([], dtype=np.float64).reshape(0, n_cols)
+
+        # Step 1: Extract all OHLC and Volume values
+        price_values = []  # Will include OHLC + price-based indicators
+        volume_values = []
+
+        for period in self.periods:
+            if period.open_price is not None:
+                price_values.append(float(period.open_price))
+            if period.high_price is not None:
+                price_values.append(float(period.high_price))
+            if period.low_price is not None:
+                price_values.append(float(period.low_price))
+            if period.close_price is not None:
+                price_values.append(float(period.close_price))
+            volume_values.append(float(period.volume))
+
+        # Step 2: Add price-based indicator values to price range calculation
+        # This ensures Bollinger Bands, SMA, etc. are included in min/max
+        for col_name in sorted(self._get_all_indicator_columns()):
+            # Find indicator
+            indicator = None
+            for key, ind in self.indicators.items():
+                if isinstance(key, str) and key == col_name:
+                    indicator = ind
+                    break
+                elif isinstance(key, tuple) and col_name in key:
+                    indicator = ind
+                    break
+
+            # If price-based, include in price range calculation
+            if indicator and indicator.get_normalization_type() == 'price':
+                for period in self.periods:
+                    val = period._data.get(col_name)
+                    if val is not None:
+                        price_values.append(float(val))
+
+        # Step 3: Calculate Price and Volume ranges
+        price_array = np.array(price_values)
+        volume_array = np.array(volume_values)
+
+        price_min = float(np.min(price_array)) if len(price_array) > 0 else 0.0
+        price_max = float(np.max(price_array)) if len(price_array) > 0 else 1.0
+        volume_min = float(np.min(volume_array)) if len(volume_array) > 0 else 0.0
+        volume_max = float(np.max(volume_array)) if len(volume_array) > 0 else 1.0
+
+        # Avoid division by zero
+        price_range = price_max - price_min if price_max != price_min else 1.0
+        volume_range = volume_max - volume_min if volume_max != volume_min else 1.0
+
+        # Step 4: Collect all indicator values for min-max indicators
+        indicator_arrays = {}
+        for col_name in sorted(self._get_all_indicator_columns()):
+            values = []
+            for period in self.periods:
+                val = period._data.get(col_name)
+                if val is not None:
+                    values.append(float(val))
+                else:
+                    values.append(np.nan)
+            indicator_arrays[col_name] = np.array(values, dtype=np.float64)
+
+        # Step 5: Build normalized data
+        data = []
+        for period in self.periods:
+            # Normalize OHLC
+            row = [
+                (float(period.open_price) - price_min) / price_range if period.open_price is not None else np.nan,
+                (float(period.high_price) - price_min) / price_range if period.high_price is not None else np.nan,
+                (float(period.low_price) - price_min) / price_range if period.low_price is not None else np.nan,
+                (float(period.close_price) - price_min) / price_range if period.close_price is not None else np.nan,
+                # Normalize Volume
+                (float(period.volume) - volume_min) / volume_range
+            ]
+
+            # Normalize indicators
+            for col_name in sorted(self._get_all_indicator_columns()):
+                value = period._data.get(col_name)
+
+                # Find the indicator instance
+                indicator = None
+                for key, ind in self.indicators.items():
+                    if isinstance(key, str) and key == col_name:
+                        indicator = ind
+                        break
+                    elif isinstance(key, tuple) and col_name in key:
+                        indicator = ind
+                        break
+
+                if indicator is None:
+                    # Shouldn't happen, but fallback to raw value
+                    row.append(float(value) if value is not None else np.nan)
+                    continue
+
+                # Normalize based on indicator's strategy
+                normalized = indicator.normalize(
+                    values=value,
+                    all_values=indicator_arrays[col_name],
+                    price_range=(price_min, price_max)
+                )
+
+                row.append(float(normalized) if normalized is not None else np.nan)
+
+            data.append(row)
+
+        return np.array(data, dtype=np.float64)

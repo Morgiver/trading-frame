@@ -78,6 +78,10 @@ class BollingerBands(Indicator):
         """Bollinger Bands produce 3 outputs: upper, middle, lower."""
         return 3
 
+    def get_normalization_type(self) -> str:
+        """Bollinger Bands use price-based normalization (they represent prices)."""
+        return 'price'
+
     def calculate(self, periods: List['Period'], index: int) -> Optional[List[float]]:
         """
         Calculate Bollinger Bands for the period at index.

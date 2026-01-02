@@ -14,6 +14,7 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **TimeFrame**: Time-based period aggregation (seconds, minutes, hours, days, weeks, months, years)
 - **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, and more)
 - **Export**: Convert frames to NumPy arrays or Pandas DataFrames with indicator columns
+- **Normalization**: Intelligent normalization strategies for ML (OHLC, Volume, and indicator-specific)
 
 ## Installation
 
@@ -125,6 +126,30 @@ import pandas as pd
 df = frame.to_pandas()  # Returns DataFrame with OHLCV + indicator columns
 print(df.head())
 ```
+
+### Normalized Data Export
+
+Trading Frame provides intelligent normalization for machine learning applications:
+
+```python
+# Export normalized data to [0, 1] range
+normalized = frame.to_normalize()  # NumPy array with normalized values
+
+# Different normalization strategies by data type:
+# - OHLC: Min-Max across all prices
+# - Volume: Min-Max across all volumes
+# - RSI: Fixed range [0-100] → [0-1]
+# - SMA (price-based): Shares OHLC min-max range
+# - MACD: Min-Max on its own values
+# - Bollinger Bands: Shares OHLC min-max range
+```
+
+Each indicator defines its own normalization strategy:
+- **Fixed Range**: RSI (0-100) normalized to [0, 1]
+- **Price-Based**: SMA, Bollinger Bands share the OHLC normalization range
+- **Min-Max**: MACD, and non-price indicators use their own value ranges
+
+This ensures semantically correct normalization for different indicator types.
 
 ## Supported Time Ranges
 

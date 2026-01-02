@@ -74,6 +74,10 @@ class MACD(Indicator):
         """MACD produces 3 outputs: line, signal, histogram."""
         return 3
 
+    def get_normalization_type(self) -> str:
+        """MACD uses its own min-max normalization."""
+        return 'minmax'
+
     def calculate(self, periods: List['Period'], index: int) -> Optional[List[float]]:
         """
         Calculate MACD for the period at index.
