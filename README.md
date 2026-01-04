@@ -65,6 +65,7 @@ for period in frame.periods:
 
 ```python
 from datetime import datetime
+from trading_frame import InsufficientDataError
 
 # Create frame
 frame = TimeFrame('5T', max_periods=100)
@@ -75,16 +76,22 @@ for candle in historical_data:
     if frame.prefill(candle):
         break  # Frame is ready with 100 periods
 
-# Option 2: Fill until specific number of closed periods
-for candle in historical_data:
-    if frame.prefill(candle, target_periods=50):
-        break  # Have 50 closed periods
-
-# Option 3: Fill until specific timestamp
+# Option 2: Fill until specific timestamp (relaxed mode)
 target_ts = datetime(2024, 1, 1, 12, 0).timestamp()
 for candle in historical_data:
-    if frame.prefill(candle, target_timestamp=target_ts):
-        break  # Reached target date
+    if frame.prefill(candle, target_timestamp=target_ts, require_full=False):
+        break  # Reached target date (may not be full)
+
+# Option 3: Fill until timestamp WITH validation (recommended for production)
+target_ts = datetime(2024, 1, 1, 12, 0).timestamp()
+try:
+    for candle in historical_data:
+        # Ensure frame is full at target timestamp
+        if frame.prefill(candle, target_timestamp=target_ts, require_full=True):
+            break  # Frame is full at target date
+except InsufficientDataError as e:
+    print(f"Not enough historical data: {e}")
+    # Handle insufficient data (fetch more, adjust start time, etc.)
 
 # Now switch to live trading
 for candle in live_data:

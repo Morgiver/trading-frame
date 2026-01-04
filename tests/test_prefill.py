@@ -3,23 +3,15 @@
 import pytest
 from datetime import datetime, timedelta
 from decimal import Decimal
-from trading_frame import Candle, TimeFrame
+from trading_frame import Candle, TimeFrame, InsufficientDataError
 
 
-class TestPrefillTargetPeriods:
-    """Test prefill() with target_periods parameter."""
+class TestPrefillDefault:
+    """Test prefill() with default behavior (fill to max_periods)."""
 
-    def test_prefill_default_target(self):
-        """Test prefill with default target (max_periods)."""
+    def test_prefill_default_fills_to_capacity(self):
+        """Test prefill fills to max_periods by default."""
         frame = TimeFrame('1T', max_periods=10)
-
-        # Default behavior: target_periods = max_periods = 10 closed periods
-        # But max_periods also limits total periods, so we can only ever have 9 closed + 1 open = 10 total
-        # This means the default won't ever reach 10 closed periods due to max_periods limit
-
-        # To get 10 closed periods, we need 11 total (10 closed + 1 open)
-        # But max_periods=10 prevents this
-        # So the default behavior is: stop when we have max_periods closed OR hit the limit
 
         result = False
         for i in range(20):
@@ -36,62 +28,9 @@ class TestPrefillTargetPeriods:
             if result:
                 break
 
-        # When max_periods limits us, we can only get max_periods-1 closed periods
-        # This is expected behavior
-        closed = len(frame.periods) - 1 if frame.periods else 0
-        assert closed >= 9, f"Should have at least 9 closed periods, got {closed}"
-        assert len(frame.periods) == 10, "Frame should be at max_periods capacity"
-
-    def test_prefill_custom_target_periods(self):
-        """Test prefill with custom target_periods."""
-        frame = TimeFrame('1T', max_periods=100)
-
-        # Target 5 closed periods
-        target = 5
-
-        # Generate candles
-        for i in range(10):
-            candle = Candle(
-                date=datetime(2024, 1, 1, 0, i),
-                open=100.0 + i,
-                high=105.0 + i,
-                low=95.0 + i,
-                close=102.0 + i,
-                volume=Decimal('1000.0')
-            )
-
-            result = frame.prefill(candle, target_periods=target)
-
-            closed = len(frame.periods) - 1 if frame.periods else 0
-
-            if closed < target:
-                assert result is False
-            else:
-                assert result is True
-                break
-
-        # Should have at least 5 closed periods
-        assert len(frame.periods) - 1 >= target
-
-    def test_prefill_zero_target(self):
-        """Test prefill with target_periods=0."""
-        frame = TimeFrame('1T', max_periods=10)
-
-        candle = Candle(
-            date=datetime(2024, 1, 1, 0, 0),
-            open=100.0,
-            high=105.0,
-            low=95.0,
-            close=102.0,
-            volume=Decimal('1000.0')
-        )
-
-        # Target 0 closed periods means first candle should return True
-        result = frame.prefill(candle, target_periods=0)
-
-        # We have 1 period, 0 closed (last one is open)
-        assert len(frame.periods) == 1
-        assert result is True  # Already >= 0
+        # Should complete when frame is full
+        assert result is True
+        assert len(frame.periods) == 10
 
     def test_prefill_maintains_max_periods(self):
         """Test that prefill respects max_periods limit."""
@@ -113,22 +52,21 @@ class TestPrefillTargetPeriods:
         assert len(frame.periods) <= 5
 
 
-class TestPrefillTargetTimestamp:
-    """Test prefill() with target_timestamp parameter."""
+class TestPrefillWithTimestamp:
+    """Test prefill() with target_timestamp."""
 
-    def test_prefill_target_timestamp(self):
-        """Test prefill with target_timestamp."""
+    def test_prefill_timestamp_relaxed_mode(self):
+        """Test prefill with timestamp and require_full=False."""
         frame = TimeFrame('1T', max_periods=100)
 
-        # Target timestamp: 2024-01-01 00:05:00
-        target_dt = datetime(2024, 1, 1, 0, 5, 0)
+        # Target timestamp at minute 10
+        target_dt = datetime(2024, 1, 1, 0, 10, 0)
         target_ts = target_dt.timestamp()
 
-        # Generate candles
-        for i in range(10):
-            candle_dt = datetime(2024, 1, 1, 0, i, 0)
+        result = False
+        for i in range(15):
             candle = Candle(
-                date=candle_dt,
+                date=datetime(2024, 1, 1, 0, i),
                 open=100.0,
                 high=105.0,
                 low=95.0,
@@ -136,16 +74,65 @@ class TestPrefillTargetTimestamp:
                 volume=Decimal('1000.0')
             )
 
-            result = frame.prefill(candle, target_timestamp=target_ts)
+            result = frame.prefill(candle, target_timestamp=target_ts, require_full=False)
 
-            if candle_dt.timestamp() < target_ts:
-                assert result is False, f"Should be False at {candle_dt}"
-            else:
-                assert result is True, f"Should be True at {candle_dt}"
+            if result:
                 break
 
-        # Should have reached target
+        # Should stop at timestamp (even if not full)
         assert result is True
+        assert len(frame.periods) < 100  # Not full
+
+    def test_prefill_timestamp_strict_mode_sufficient_data(self):
+        """Test prefill with timestamp and require_full=True when data is sufficient."""
+        frame = TimeFrame('5T', max_periods=20)
+
+        # Target: 20 periods = 100 minutes
+        # Provide 120 minutes of data
+        target_dt = datetime(2024, 1, 1, 2, 0, 0)  # 120 minutes from midnight
+        target_ts = target_dt.timestamp()
+
+        result = False
+        for i in range(150):
+            candle = Candle(
+                date=datetime(2024, 1, 1, 0, 0) + timedelta(minutes=i),
+                open=100.0,
+                high=105.0,
+                low=95.0,
+                close=102.0,
+                volume=Decimal('1000.0')
+            )
+
+            result = frame.prefill(candle, target_timestamp=target_ts, require_full=True)
+
+            if result:
+                break
+
+        # Should complete successfully
+        assert result is True
+        assert len(frame.periods) == 20  # Full
+
+    def test_prefill_timestamp_strict_mode_insufficient_data_raises(self):
+        """Test prefill raises when insufficient data at timestamp."""
+        frame = TimeFrame('1T', max_periods=100)
+
+        # Target timestamp at minute 10 (but need 100 periods)
+        target_dt = datetime(2024, 1, 1, 0, 10, 0)
+        target_ts = target_dt.timestamp()
+
+        # Only 15 candles - will reach timestamp before filling frame
+        with pytest.raises(InsufficientDataError, match="only have.*periods"):
+            for i in range(15):
+                candle = Candle(
+                    date=datetime(2024, 1, 1, 0, i),
+                    open=100.0,
+                    high=105.0,
+                    low=95.0,
+                    close=102.0,
+                    volume=Decimal('1000.0')
+                )
+
+                frame.prefill(candle, target_timestamp=target_ts, require_full=True)
 
     def test_prefill_exact_timestamp_match(self):
         """Test prefill when candle timestamp exactly matches target."""
@@ -164,49 +151,13 @@ class TestPrefillTargetTimestamp:
             volume=Decimal('1000.0')
         )
 
-        result = frame.prefill(candle, target_timestamp=target_ts)
-        assert result is True
-
-    def test_prefill_timestamp_past_target(self):
-        """Test prefill when candle is already past target."""
-        frame = TimeFrame('1T', max_periods=100)
-
-        target_dt = datetime(2024, 1, 1, 0, 5, 0)
-        target_ts = target_dt.timestamp()
-
-        # Candle well past target
-        candle_dt = datetime(2024, 1, 1, 1, 0, 0)
-        candle = Candle(
-            date=candle_dt,
-            open=100.0,
-            high=105.0,
-            low=95.0,
-            close=102.0,
-            volume=Decimal('1000.0')
-        )
-
-        result = frame.prefill(candle, target_timestamp=target_ts)
+        # Relaxed mode - should stop even if not full
+        result = frame.prefill(candle, target_timestamp=target_ts, require_full=False)
         assert result is True
 
 
 class TestPrefillValidation:
     """Test prefill() parameter validation."""
-
-    def test_prefill_both_targets_raises(self):
-        """Test that specifying both targets raises ValueError."""
-        frame = TimeFrame('1T', max_periods=10)
-
-        candle = Candle(
-            date=datetime(2024, 1, 1, 0, 0),
-            open=100.0,
-            high=105.0,
-            low=95.0,
-            close=102.0,
-            volume=Decimal('1000.0')
-        )
-
-        with pytest.raises(ValueError, match="both"):
-            frame.prefill(candle, target_periods=5, target_timestamp=1234567890.0)
 
     def test_prefill_invalid_candle_type(self):
         """Test that invalid candle type raises TypeError."""
@@ -226,8 +177,8 @@ class TestPrefillIntegration:
         frame = TimeFrame('1T', max_periods=50)
         frame.add_indicator(RSI(length=14), 'RSI_14')
 
-        # Prefill with 20 candles
-        for i in range(25):
+        # Prefill frame
+        for i in range(60):
             candle = Candle(
                 date=datetime(2024, 1, 1, 0, i),
                 open=100.0 + i,
@@ -237,25 +188,22 @@ class TestPrefillIntegration:
                 volume=Decimal('1000.0')
             )
 
-            result = frame.prefill(candle, target_periods=20)
+            result = frame.prefill(candle)
             if result:
                 break
 
-        # Should have 20+ closed periods
-        assert len(frame.periods) - 1 >= 20
+        # Should be full
+        assert len(frame.periods) == 50
 
         # Indicators should be calculated
-        for period in frame.periods[-10:]:  # Check last 10 periods
-            # Should have RSI value (might be None if not enough data)
+        for period in frame.periods[-10:]:
             assert 'RSI_14' in period._data
 
     def test_prefill_typical_warmup_scenario(self):
         """Test typical warm-up scenario before live trading."""
         frame = TimeFrame('5T', max_periods=100)
 
-        # Simulate warm-up: fill until we have 100 closed periods
-        # For 5T frame, need 5 candles (1 min apart) per period
-        # So need ~505 candles to get 100 closed periods + 1 open
+        # Warm-up: fill frame to capacity
         candles_processed = 0
         for i in range(600):
             candle = Candle(
@@ -268,13 +216,11 @@ class TestPrefillIntegration:
             )
 
             candles_processed += 1
-            if frame.prefill(candle):  # Uses default max_periods
+            if frame.prefill(candle):
                 break
 
         # Should have processed enough candles
-        # With max_periods=100, we stop when periods reach 100 (99 closed + 1 open)
-        # Each 5T period needs ~5 minutes, so ~500 candles
-        assert candles_processed >= 495, f"Processed {candles_processed} candles"
+        assert candles_processed >= 495
         # Frame should be at max capacity
         assert len(frame.periods) == 100
 
@@ -306,11 +252,11 @@ class TestPrefillIntegration:
                 close=102.0,
                 volume=Decimal('1000.0')
             )
-            frame.prefill(candle, target_periods=10)
+            frame.prefill(candle)
 
         # Should have 5 new_period events
         assert new_period_count == 5
-        # Should have 4 close events (first period doesn't close anything)
+        # Should have 4 close events
         assert close_count == 4
 
     def test_prefill_then_normal_feed(self):
@@ -331,7 +277,8 @@ class TestPrefillIntegration:
             if frame.prefill(candle):
                 break
 
-        prefill_periods = len(frame.periods)
+        # Should be full
+        assert len(frame.periods) == 10
 
         # Now use normal feed
         for i in range(15, 20):
@@ -347,3 +294,34 @@ class TestPrefillIntegration:
 
         # Should maintain max_periods
         assert len(frame.periods) == 10
+
+    def test_prefill_production_scenario(self):
+        """Test recommended production warm-up pattern."""
+        frame = TimeFrame('5T', max_periods=100)
+
+        # Production: fill until target time with validation
+        target_dt = datetime(2024, 1, 1, 12, 0, 0)
+        target_ts = target_dt.timestamp()
+
+        # Generate sufficient data (12 hours = 720 minutes)
+        for i in range(750):
+            candle = Candle(
+                date=datetime(2024, 1, 1, 0, 0) + timedelta(minutes=i),
+                open=100.0,
+                high=105.0,
+                low=95.0,
+                close=102.0,
+                volume=Decimal('1000.0')
+            )
+
+            try:
+                result = frame.prefill(candle, target_timestamp=target_ts, require_full=True)
+                if result:
+                    break
+            except InsufficientDataError as e:
+                pytest.fail(f"Should have enough data: {e}")
+
+        # Should be full at target time
+        assert len(frame.periods) == 100
+        # Last candle should be >= target time
+        assert frame.periods[-1].open_date.timestamp() <= target_ts
