@@ -309,6 +309,63 @@ class Frame:
         if len(self.periods) > self.max_periods:
             self.periods.pop(0)
 
+    def prefill(self, candle: Candle, target_periods: int = None, target_timestamp: float = None) -> bool:
+        """
+        Feed candle and check if prefill target is reached.
+
+        Use this method during warm-up phase to fill the frame until a condition is met.
+        Only one target should be specified.
+
+        Parameters:
+            candle: Candle to process
+            target_periods: Stop when this many CLOSED periods are reached (default: max_periods)
+            target_timestamp: Stop when candle timestamp >= this value
+
+        Returns:
+            True if target is reached, False otherwise
+
+        Raises:
+            ValueError: If both targets are specified or neither is specified
+            TypeError: If candle is not a Candle instance
+
+        Example:
+            # Fill until max_periods closed periods
+            for candle in data_source:
+                if frame.prefill(candle):
+                    break  # Frame is ready
+
+            # Fill until specific timestamp
+            target_ts = datetime(2024, 1, 1).timestamp()
+            for candle in data_source:
+                if frame.prefill(candle, target_timestamp=target_ts):
+                    break  # Reached target date
+        """
+        # Validate parameters
+        if target_periods is not None and target_timestamp is not None:
+            raise ValueError("Specify either target_periods or target_timestamp, not both")
+
+        if target_periods is None and target_timestamp is None:
+            # Default to max_periods
+            target_periods = self.max_periods
+
+        # Feed the candle
+        self.feed(candle)
+
+        # Check if target is reached
+        if target_periods is not None:
+            # Count closed periods (all except the last one which may still be open)
+            closed_periods = len(self.periods) - 1 if self.periods else 0
+            # Target reached if we have enough closed periods
+            # OR if we've hit max_periods limit (can't get more closed periods)
+            return closed_periods >= target_periods or len(self.periods) >= self.max_periods
+
+        elif target_timestamp is not None:
+            # Check if current candle timestamp >= target
+            candle_ts = candle.date.timestamp()
+            return candle_ts >= target_timestamp
+
+        return False
+
     def to_numpy(self):
         """
         Convert all periods to numpy array.

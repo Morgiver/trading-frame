@@ -8,7 +8,7 @@ from .timeframe import TimeFrame
 # Import indicators submodule
 from . import indicators
 
-__version__ = "0.2.0"
+__version__ = "0.3.1"
 
 __all__ = [
     'Candle',

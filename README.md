@@ -15,6 +15,7 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, and more)
 - **Export**: Convert frames to NumPy arrays or Pandas DataFrames with indicator columns
 - **Normalization**: Intelligent normalization strategies for ML (OHLC, Volume, and indicator-specific)
+- **Prefill**: Efficient warm-up mechanism to fill frames before live trading
 
 ## Installation
 
@@ -58,6 +59,36 @@ frame.feed(candle)
 # Access periods
 for period in frame.periods:
     print(f"Open: {period.open_price}, Close: {period.close_price}, Volume: {period.volume}")
+```
+
+### Warm-Up with Prefill
+
+```python
+from datetime import datetime
+
+# Create frame
+frame = TimeFrame('5T', max_periods=100)
+
+# Warm-up: fill frame before live trading
+# Option 1: Fill until max_periods (default)
+for candle in historical_data:
+    if frame.prefill(candle):
+        break  # Frame is ready with 100 periods
+
+# Option 2: Fill until specific number of closed periods
+for candle in historical_data:
+    if frame.prefill(candle, target_periods=50):
+        break  # Have 50 closed periods
+
+# Option 3: Fill until specific timestamp
+target_ts = datetime(2024, 1, 1, 12, 0).timestamp()
+for candle in historical_data:
+    if frame.prefill(candle, target_timestamp=target_ts):
+        break  # Reached target date
+
+# Now switch to live trading
+for candle in live_data:
+    frame.feed(candle)  # Normal operation
 ```
 
 ### Event Handling
