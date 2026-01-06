@@ -22,13 +22,13 @@ def main():
     # 1. Download real Nasdaq data from Yahoo Finance
     print("\n1. Downloading ^IXIC (Nasdaq Composite) data from Yahoo Finance...")
     ticker = "^IXIC"
-    data = yf.download(ticker, period="3mo", interval="1d", progress=False)
+    data = yf.download(ticker, period="5d", interval="15m", progress=False)
 
-    print(f"   Downloaded {len(data)} daily candles")
+    print(f"   Downloaded {len(data)} 15-minute candles")
 
     # 2. Create TimeFrame
     print("\n2. Creating TimeFrame...")
-    frame = TimeFrame('1D', max_periods=250)
+    frame = TimeFrame('15T', max_periods=500)
 
     # 3. Add OrderBlock indicator
     print("3. Adding OrderBlock indicator (lookback=10, min_body=30%)...")
@@ -117,12 +117,12 @@ def main():
         df,
         type='candle',
         style='charles',
-        title=f'{ticker} - Order Blocks\nOrange lines mark institutional zones',
+        title=f'{ticker} - Order Blocks (15-minute timeframe)\nOrange lines mark institutional zones',
         ylabel='Price',
         volume=True,
         addplot=addplots if addplots else None,
         figsize=(16, 9),
-        warn_too_much_data=300
+        warn_too_much_data=500
     )
 
     print("   Chart displayed!")
@@ -131,7 +131,7 @@ def main():
     if ob_zones:
         print(f"\n7. Order Block Details (first 5):")
         for i, zone in enumerate(ob_zones[:5]):
-            print(f"   OB #{i+1}: Date={zone['date'].strftime('%Y-%m-%d')}, "
+            print(f"   OB #{i+1}: DateTime={zone['date'].strftime('%Y-%m-%d %H:%M')}, "
                   f"Range=[{zone['low']:.2f}, {zone['high']:.2f}], "
                   f"Size={zone['high']-zone['low']:.2f}")
 
