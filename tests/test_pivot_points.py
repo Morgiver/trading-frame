@@ -50,6 +50,17 @@ class TestPivotPointsBasic:
         assert pivot.high_source == 'custom_high'
         assert pivot.low_source == 'custom_low'
 
+    def test_initialization_custom_columns(self):
+        """Test PivotPoints with custom column names."""
+        pivot = PivotPoints(
+            left_bars=5,
+            right_bars=2,
+            high_column='SWING_HIGH',
+            low_column='SWING_LOW'
+        )
+        assert pivot.high_column == 'SWING_HIGH'
+        assert pivot.low_column == 'SWING_LOW'
+
     def test_invalid_left_bars(self):
         """Test that left_bars must be >= 1."""
         with pytest.raises(ValueError, match="left_bars must be at least 1"):
@@ -461,3 +472,38 @@ class TestPivotPointsIntegration:
         valid_values = normalized[~np.isnan(normalized)]
         assert np.all(valid_values >= 0.0)
         assert np.all(valid_values <= 1.0)
+
+    def test_custom_column_names_integration(self):
+        """Test that custom column names work end-to-end in Frame."""
+        frame = TimeFrame('1T', max_periods=50)
+        pivot = PivotPoints(
+            left_bars=2,
+            right_bars=2,
+            high_column='SWING_HIGH',
+            low_column='SWING_LOW'
+        )
+
+        base_date = datetime(2024, 1, 1, 12, 0)
+        # Need at least 5 periods to confirm a pivot at index 2 (2 left + 1 candidate + 2 right)
+        # And 7 periods to confirm a pivot at index 4
+        highs = [100, 101, 110, 102, 101, 100, 99]  # 110 at index 2 should be swing high
+        lows = [90, 91, 95, 92, 81, 82, 83]         # 81 at index 4 should be swing low
+
+        for i, (h, l) in enumerate(zip(highs, lows)):
+            date = base_date + timedelta(minutes=i)
+            candle = create_candle(date, high=h, low=l, open_val=h-5, close_val=l+5)
+            frame.feed(candle)
+
+        # Use custom column names when adding indicator
+        frame.add_indicator(pivot, ['SWING_HIGH', 'SWING_LOW'])
+
+        # Export to pandas and check column names
+        df = frame.to_pandas()
+        assert 'SWING_HIGH' in df.columns
+        assert 'SWING_LOW' in df.columns
+        assert 'PIVOT_HIGH' not in df.columns
+        assert 'PIVOT_LOW' not in df.columns
+
+        # Verify values are assigned correctly
+        assert df.iloc[2]['SWING_HIGH'] == 110  # Index 2 should have swing high
+        assert df.iloc[4]['SWING_LOW'] == 81    # Index 4 should have swing low
