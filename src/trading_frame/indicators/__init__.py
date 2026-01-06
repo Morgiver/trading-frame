@@ -6,7 +6,7 @@ from .base import Indicator
 from .momentum import RSI, MACD
 
 # Trend indicators
-from .trend import SMA, BollingerBands
+from .trend import SMA, BollingerBands, PivotPoints
 
 __all__ = [
     'Indicator',
@@ -16,4 +16,5 @@ __all__ = [
     # Trend
     'SMA',
     'BollingerBands',
+    'PivotPoints',
 ]

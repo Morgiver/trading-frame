@@ -12,10 +12,29 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **Period**: Aggregated data over a time range with Decimal precision for volumes
 - **Frame**: Base class for data aggregation with event system
 - **TimeFrame**: Time-based period aggregation (seconds, minutes, hours, days, weeks, months, years)
-- **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, and more)
+- **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, Pivot Points, and more)
 - **Export**: Convert frames to NumPy arrays or Pandas DataFrames with indicator columns
 - **Normalization**: Intelligent normalization strategies for ML (OHLC, Volume, and indicator-specific)
 - **Prefill**: Efficient warm-up mechanism to fill frames before live trading
+
+## Examples
+
+The `examples/` directory contains complete demonstrations of all indicators using real market data:
+
+- **`rsi_demo.py`** - RSI indicator with overbought/oversold levels
+- **`macd_demo.py`** - MACD with bullish/bearish crossover detection
+- **`sma_demo.py`** - Multiple moving averages (SMA 20, 50, 200) with Golden/Death Cross
+- **`bollinger_demo.py`** - Bollinger Bands with volatility analysis
+- **`pivot_points_demo.py`** - Swing High/Low detection for support/resistance
+
+All examples use **Yahoo Finance** to download real **Nasdaq Composite (^IXIC)** data and visualize results with **mplfinance**.
+
+```bash
+# Run any example
+python examples/rsi_demo.py
+python examples/macd_demo.py
+python examples/pivot_points_demo.py
+```
 
 ## Installation
 
@@ -31,6 +50,12 @@ pip install git+https://github.com/Morgiver/trading-frame.git
 git clone https://github.com/Morgiver/trading-frame.git
 cd trading-frame
 pip install -e .
+```
+
+### Install Example Dependencies
+
+```bash
+pip install yfinance mplfinance matplotlib
 ```
 
 ## Usage
@@ -121,6 +146,7 @@ from trading_frame.indicators.momentum.rsi import RSI
 from trading_frame.indicators.momentum.macd import MACD
 from trading_frame.indicators.trend.sma import SMA
 from trading_frame.indicators.trend.bollinger import BollingerBands
+from trading_frame.indicators.trend.pivot_points import PivotPoints
 
 # Add single-column indicator
 frame.add_indicator(RSI(length=14), 'RSI_14')
@@ -141,9 +167,19 @@ frame.add_indicator(
     ['BB_UPPER', 'BB_MIDDLE', 'BB_LOWER']
 )
 
+# Add Pivot Points (Swing High/Low detection)
+frame.add_indicator(
+    PivotPoints(left_bars=5, right_bars=2),
+    ['PIVOT_HIGH', 'PIVOT_LOW']
+)
+
 # Access indicator values
 for period in frame.periods:
     print(f"RSI: {period.RSI_14}, SMA20: {period.SMA_20}")
+    if period.PIVOT_HIGH:
+        print(f"  Swing High detected at {period.PIVOT_HIGH}")
+    if period.PIVOT_LOW:
+        print(f"  Swing Low detected at {period.PIVOT_LOW}")
 
 # Dependent indicators (indicator calculated from another indicator)
 frame.add_indicator(SMA(period=5, source='RSI_14'), 'RSI_SMA')
@@ -151,6 +187,45 @@ frame.add_indicator(SMA(period=5, source='RSI_14'), 'RSI_SMA')
 # Remove indicator
 frame.remove_indicator('RSI_14')
 ```
+
+### Pivot Points (Swing High/Low Detection)
+
+Pivot Points detect local highs and lows based on surrounding bars:
+
+```python
+from trading_frame.indicators.trend.pivot_points import PivotPoints
+
+# Create indicator with asymmetric confirmation
+pivot = PivotPoints(
+    left_bars=5,   # Compare with 5 bars to the left
+    right_bars=2   # Confirm with 2 bars to the right
+)
+
+frame.add_indicator(pivot, ['PIVOT_HIGH', 'PIVOT_LOW'])
+
+# Access pivot points
+for i, period in enumerate(frame.periods):
+    if period.PIVOT_HIGH is not None:
+        print(f"Swing High at index {i}: {period.PIVOT_HIGH}")
+    if period.PIVOT_LOW is not None:
+        print(f"Swing Low at index {i}: {period.PIVOT_LOW}")
+```
+
+**How it works:**
+
+- **Swing High**: Detected when `high[0]` is greater than all `high[-left_bars..-1]` and `high[1..right_bars]`
+- **Swing Low**: Detected when `low[0]` is lower than all `low[-left_bars..-1]` and `low[1..right_bars]`
+- **Confirmation Lag**: Pivots are confirmed `right_bars` periods after the candidate
+  - With `right_bars=2`, a pivot at index 100 is confirmed at index 102
+  - The pivot value is assigned to the candidate bar (100), not the confirmation bar (102)
+
+**Use cases:**
+
+- Support/Resistance level identification
+- Elliott Wave analysis
+- Pattern recognition (Head & Shoulders, Double Tops/Bottoms)
+- Trend reversal detection
+- Entry/Exit signal generation
 
 ### Export to NumPy/Pandas
 
