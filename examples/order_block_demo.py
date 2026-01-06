@@ -20,8 +20,8 @@ def main():
     print("=" * 60)
 
     # 1. Download real Nasdaq data from Yahoo Finance
-    print("\n1. Downloading ^IXIC (Nasdaq Composite) data from Yahoo Finance...")
-    ticker = "^IXIC"
+    print("\n1. Downloading QQQ (Nasdaq-100 ETF) data from Yahoo Finance...")
+    ticker = "QQQ"
     data = yf.download(ticker, period="5d", interval="15m", progress=False)
 
     print(f"   Downloaded {len(data)} 15-minute candles")

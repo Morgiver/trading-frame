@@ -15,12 +15,12 @@ from trading_frame.indicators import BollingerBands
 
 def main():
     print("=" * 60)
-    print("Bollinger Bands Demo - Nasdaq Composite")
+    print("Bollinger Bands Demo - Nasdaq-100 ETF")
     print("=" * 60)
 
     # 1. Download Nasdaq data
-    print("\n1. Downloading ^IXIC data from Yahoo Finance...")
-    ticker = "^IXIC"
+    print("\n1. Downloading QQQ (Nasdaq-100 ETF) data from Yahoo Finance...")
+    ticker = "QQQ"
     data = yf.download(ticker, period="6mo", interval="1d", progress=False)
     print(f"   Downloaded {len(data)} daily candles")
 

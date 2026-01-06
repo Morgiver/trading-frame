@@ -15,12 +15,12 @@ from trading_frame.indicators import RSI
 
 def main():
     print("=" * 60)
-    print("RSI Demo - Nasdaq Composite")
+    print("RSI Demo - Nasdaq-100 ETF")
     print("=" * 60)
 
     # 1. Download Nasdaq data
-    print("\n1. Downloading ^IXIC data from Yahoo Finance...")
-    ticker = "^IXIC"
+    print("\n1. Downloading QQQ (Nasdaq-100 ETF) data from Yahoo Finance...")
+    ticker = "QQQ"
     data = yf.download(ticker, period="3mo", interval="1d", progress=False)
     print(f"   Downloaded {len(data)} daily candles")
 

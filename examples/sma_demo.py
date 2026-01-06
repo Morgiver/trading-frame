@@ -15,12 +15,12 @@ from trading_frame.indicators import SMA
 
 def main():
     print("=" * 60)
-    print("SMA Demo - Nasdaq Composite")
+    print("SMA Demo - Nasdaq-100 ETF")
     print("=" * 60)
 
     # 1. Download Nasdaq data (1 year for SMA 200)
-    print("\n1. Downloading ^IXIC data from Yahoo Finance...")
-    ticker = "^IXIC"
+    print("\n1. Downloading QQQ (Nasdaq-100 ETF) data from Yahoo Finance...")
+    ticker = "QQQ"
     data = yf.download(ticker, period="1y", interval="1d", progress=False)
     print(f"   Downloaded {len(data)} daily candles")
 
