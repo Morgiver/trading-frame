@@ -9,6 +9,7 @@ from trading_frame.indicators.momentum.rsi import RSI
 from trading_frame.indicators.momentum.macd import MACD
 from trading_frame.indicators.trend.sma import SMA
 from trading_frame.indicators.trend.bollinger import BollingerBands
+from trading_frame.indicators.trend.pivot_points import PivotPoints
 
 
 class TestNormalization:
@@ -42,6 +43,10 @@ class TestNormalization:
             BollingerBands(period=20),
             ['BB_UPPER', 'BB_MIDDLE', 'BB_LOWER']
         )
+        self.frame.add_indicator(
+            PivotPoints(left_bars=5, right_bars=2),
+            ['PIVOT_HIGH', 'PIVOT_LOW']
+        )
 
     def test_to_normalize_shape(self):
         """Test that to_normalize returns correct shape."""
@@ -50,8 +55,8 @@ class TestNormalization:
         # Should have same number of rows as periods
         assert normalized.shape[0] == len(self.frame.periods)
 
-        # Should have OHLCV (5) + RSI (1) + SMA (1) + MACD (3) + BB (3) = 13 columns
-        assert normalized.shape[1] == 13
+        # Should have OHLCV (5) + RSI (1) + SMA (1) + MACD (3) + BB (3) + PivotPoints (2) = 15 columns
+        assert normalized.shape[1] == 15
 
     def test_ohlc_normalization_range(self):
         """Test that OHLC values are normalized to [0, 1]."""
@@ -263,6 +268,52 @@ class TestNormalization:
         normalized2 = self.frame.to_normalize()
 
         np.testing.assert_array_equal(normalized1, normalized2)
+
+    def test_pivot_points_price_normalization(self):
+        """Test that PivotPoints use price-based normalization."""
+        normalized = self.frame.to_normalize()
+
+        # Get price min/max (unified range for OHLC + price-based indicators)
+        price_values = []
+        for period in self.frame.periods:
+            if period.open_price is not None:
+                price_values.extend([
+                    float(period.open_price),
+                    float(period.high_price),
+                    float(period.low_price),
+                    float(period.close_price)
+                ])
+
+        # Add price-based indicator values (SMA, BB, PivotPoints)
+        for col in ['SMA_20', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'PIVOT_HIGH', 'PIVOT_LOW']:
+            for period in self.frame.periods:
+                val = period._data.get(col)
+                if val is not None:
+                    price_values.append(float(val))
+
+        price_min = np.min(price_values)
+        price_max = np.max(price_values)
+        price_range = price_max - price_min
+
+        # Get PivotPoints column indices
+        indicator_cols = sorted(self.frame._get_all_indicator_columns())
+        pivot_high_index = 5 + indicator_cols.index('PIVOT_HIGH')
+        pivot_low_index = 5 + indicator_cols.index('PIVOT_LOW')
+
+        # Verify normalization for detected pivots
+        for i, period in enumerate(self.frame.periods):
+            pivot_high_raw = period._data.get('PIVOT_HIGH')
+            pivot_low_raw = period._data.get('PIVOT_LOW')
+
+            if pivot_high_raw is not None:
+                expected_norm = (pivot_high_raw - price_min) / price_range
+                actual_norm = normalized[i, pivot_high_index]
+                assert actual_norm == pytest.approx(expected_norm, abs=1e-6)
+
+            if pivot_low_raw is not None:
+                expected_norm = (pivot_low_raw - price_min) / price_range
+                actual_norm = normalized[i, pivot_low_index]
+                assert actual_norm == pytest.approx(expected_norm, abs=1e-6)
 
     def test_normalization_no_indicators(self):
         """Test normalization without indicators."""
