@@ -23,7 +23,7 @@ def main():
     # 1. Download real Nasdaq data from Yahoo Finance
     print("\n1. Downloading QQQ (Nasdaq-100 ETF) data from Yahoo Finance...")
     ticker = "QQQ"
-    data = yf.download(ticker, period="5d", interval="15m", progress=False)
+    data = yf.download(ticker, period="1mo", interval="15m", progress=False)
 
     print(f"   Downloaded {len(data)} 15-minute candles")
 
@@ -36,13 +36,8 @@ def main():
     pivot = PivotPoints(left_bars=5, right_bars=2)
     frame.add_indicator(pivot, ['PIVOT_HIGH', 'PIVOT_LOW'])
 
-    # 4. Add OrderBlock indicator with pivot filter
-    print("4. Adding OrderBlock indicator (lookback=10, min_body=30%, require_pivot=True)...")
-    ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
-    frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
-
-    # 5. Feed data to frame
-    print("5. Processing candles...")
+    # 4. Feed data to frame FIRST
+    print("4. Processing candles...")
     for date, row in data.iterrows():
         candle = Candle(
             date=date,
@@ -53,6 +48,11 @@ def main():
             volume=row['Volume'].item()
         )
         frame.feed(candle)
+
+    # 5. Add OrderBlock indicator AFTER all data is fed (so pivots are confirmed)
+    print("5. Adding OrderBlock indicator (engulfing pattern + pivot requirement)...")
+    ob = OrderBlock()
+    frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
     # 6. Count Pivots and Order Blocks
     pivot_count = sum(1 for p in frame.periods if p.PIVOT_HIGH is not None or p.PIVOT_LOW is not None)

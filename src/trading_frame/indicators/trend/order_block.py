@@ -10,32 +10,23 @@ if TYPE_CHECKING:
 
 class OrderBlock(Indicator):
     """
-    Order Block (OB) Detector
+    Order Block (OB) Detector - Engulfing Pattern with Pivot
 
-    Order Blocks represent institutional buying or selling activity zones.
-    They are identified as the last opposite-direction candle before a strong
-    directional move (breakout).
+    Order Blocks are 2-candle engulfing patterns where one of the candles is a pivot point.
 
     Bullish Order Block (Demand Zone):
-    - Last bearish candle (close < open) before a bullish breakout
-    - Breakout confirmed when price closes above the bearish candle's high
-    - OB zone: [low, high] of the bearish candle
+    - Bearish candle (red) completely engulfed by bullish candle (green)
+    - One of the two candles must be a pivot point
+    - OB zone: [low, high] of the engulfed bearish candle
     - Acts as potential support when price returns
 
     Bearish Order Block (Supply Zone):
-    - Last bullish candle (close > open) before a bearish breakout
-    - Breakout confirmed when price closes below the bullish candle's low
-    - OB zone: [low, high] of the bullish candle
+    - Bullish candle (green) completely engulfed by bearish candle (red)
+    - One of the two candles must be a pivot point
+    - OB zone: [low, high] of the engulfed bullish candle
     - Acts as potential resistance when price returns
 
-    The indicator looks back to find the last opposite candle and marks it
-    when a breakout is confirmed.
-
     Parameters:
-        lookback: Maximum periods to search back for opposite candle (default: 10)
-        min_body_pct: Minimum body size as % of candle range to filter noise (default: 0.3 = 30%)
-        require_pivot: If True, require a pivot point in the 2-3 candles before OB (default: False)
-        pivot_lookback: Candles to check for pivot before OB (default: 3)
         pivot_high_col: Column name for pivot highs from PivotPoints indicator (default: 'PIVOT_HIGH')
         pivot_low_col: Column name for pivot lows from PivotPoints indicator (default: 'PIVOT_LOW')
 
@@ -51,10 +42,6 @@ class OrderBlock(Indicator):
 
     def __init__(
         self,
-        lookback: int = 10,
-        min_body_pct: float = 0.3,
-        require_pivot: bool = False,
-        pivot_lookback: int = 3,
         pivot_high_col: str = 'PIVOT_HIGH',
         pivot_low_col: str = 'PIVOT_LOW',
         open_source: str = 'open_price',
@@ -66,31 +53,13 @@ class OrderBlock(Indicator):
         Initialize OrderBlock indicator.
 
         Parameters:
-            lookback: Maximum periods to look back for opposite candle (default: 10)
-            min_body_pct: Minimum body size as % of range (0-1, default: 0.3)
-            require_pivot: Require pivot in preceding candles (default: False)
-            pivot_lookback: Candles to check for pivot before OB (default: 3)
             pivot_high_col: Column name for pivot highs (default: 'PIVOT_HIGH')
             pivot_low_col: Column name for pivot lows (default: 'PIVOT_LOW')
             open_source: Column name for open prices (default: 'open_price')
             high_source: Column name for high prices (default: 'high_price')
             low_source: Column name for low prices (default: 'low_price')
             close_source: Column name for close prices (default: 'close_price')
-
-        Raises:
-            ValueError: If lookback < 1 or min_body_pct < 0 or min_body_pct > 1 or pivot_lookback < 2
         """
-        if lookback < 1:
-            raise ValueError("lookback must be at least 1")
-        if min_body_pct < 0 or min_body_pct > 1:
-            raise ValueError("min_body_pct must be between 0 and 1")
-        if pivot_lookback < 2:
-            raise ValueError("pivot_lookback must be at least 2")
-
-        self.lookback = lookback
-        self.min_body_pct = min_body_pct
-        self.require_pivot = require_pivot
-        self.pivot_lookback = pivot_lookback
         self.pivot_high_col = pivot_high_col
         self.pivot_low_col = pivot_low_col
         self.open_source = open_source
@@ -102,15 +71,19 @@ class OrderBlock(Indicator):
         self._output_columns = None
 
     def requires_min_periods(self) -> int:
-        """OrderBlock needs at least 2 periods (current + 1 for comparison)."""
+        """OrderBlock needs at least 2 periods (for engulfing pattern)."""
         return 2
 
     def get_dependencies(self) -> List[str]:
-        """OrderBlock depends on OHLC source columns and optionally pivot columns."""
-        deps = [self.open_source, self.high_source, self.low_source, self.close_source]
-        if self.require_pivot:
-            deps.extend([self.pivot_high_col, self.pivot_low_col])
-        return deps
+        """OrderBlock depends on OHLC source columns and pivot columns."""
+        return [
+            self.open_source,
+            self.high_source,
+            self.low_source,
+            self.close_source,
+            self.pivot_high_col,
+            self.pivot_low_col
+        ]
 
     def get_num_outputs(self) -> int:
         """OrderBlock produces 2 outputs: ob_high, ob_low."""
@@ -136,73 +109,71 @@ class OrderBlock(Indicator):
             return False
         return close_val < open_val
 
-    def _get_body_size_pct(self, period: 'Period') -> Optional[float]:
-        """Calculate body size as percentage of candle range."""
-        open_val = period._data.get(self.open_source)
-        close_val = period._data.get(self.close_source)
-        high_val = period._data.get(self.high_source)
-        low_val = period._data.get(self.low_source)
-
-        if any(v is None for v in [open_val, close_val, high_val, low_val]):
-            return None
-
-        candle_range = high_val - low_val
-        if candle_range == 0:
-            return 0.0
-
-        body_size = abs(close_val - open_val)
-        return body_size / candle_range
-
-    def _has_pivot_before(self, periods: List['Period'], ob_index: int) -> bool:
+    def _is_bullish_engulfing(self, prev: 'Period', curr: 'Period') -> bool:
         """
-        Check if there's a pivot (from PivotPoints indicator) in the 2-3 candles
-        before the potential Order Block candle.
+        Check if current candle bullish-engulfs previous candle.
 
-        For bullish OB (bearish candle), look for PIVOT_LOW before it.
-        For bearish OB (bullish candle), look for PIVOT_HIGH before it.
-
-        Parameters:
-            periods: List of all periods
-            ob_index: Index of the potential OB candle
-
-        Returns:
-            True if pivot found in preceding candles, False otherwise
+        Bullish engulfing:
+        - Previous candle is bearish (red)
+        - Current candle is bullish (green)
+        - Current candle completely engulfs previous candle
         """
-        # Need at least pivot_lookback candles before OB
-        if ob_index < self.pivot_lookback:
+        if not self._is_bearish_candle(prev) or not self._is_bullish_candle(curr):
             return False
 
-        is_bullish_ob = self._is_bearish_candle(periods[ob_index])  # Bearish candle = Bullish OB
-        is_bearish_ob = self._is_bullish_candle(periods[ob_index])  # Bullish candle = Bearish OB
+        prev_open = prev._data.get(self.open_source)
+        prev_close = prev._data.get(self.close_source)
+        curr_open = curr._data.get(self.open_source)
+        curr_close = curr._data.get(self.close_source)
 
-        # Check the pivot_lookback candles immediately before the OB candle
-        start_idx = max(0, ob_index - self.pivot_lookback)
-        end_idx = ob_index  # Exclusive, so we check candles before OB
+        if any(v is None for v in [prev_open, prev_close, curr_open, curr_close]):
+            return False
 
-        for i in range(start_idx, end_idx):
-            if is_bullish_ob:
-                # For bullish OB, look for pivot low
-                pivot_low = periods[i]._data.get(self.pivot_low_col)
-                if pivot_low is not None:
-                    return True
-            elif is_bearish_ob:
-                # For bearish OB, look for pivot high
-                pivot_high = periods[i]._data.get(self.pivot_high_col)
-                if pivot_high is not None:
-                    return True
+        # Current bullish candle engulfs previous bearish candle
+        # curr_open < prev_close (starts below previous close)
+        # curr_close > prev_open (ends above previous open)
+        return curr_open < prev_close and curr_close > prev_open
 
-        return False
+    def _is_bearish_engulfing(self, prev: 'Period', curr: 'Period') -> bool:
+        """
+        Check if current candle bearish-engulfs previous candle.
+
+        Bearish engulfing:
+        - Previous candle is bullish (green)
+        - Current candle is bearish (red)
+        - Current candle completely engulfs previous candle
+        """
+        if not self._is_bullish_candle(prev) or not self._is_bearish_candle(curr):
+            return False
+
+        prev_open = prev._data.get(self.open_source)
+        prev_close = prev._data.get(self.close_source)
+        curr_open = curr._data.get(self.open_source)
+        curr_close = curr._data.get(self.close_source)
+
+        if any(v is None for v in [prev_open, prev_close, curr_open, curr_close]):
+            return False
+
+        # Current bearish candle engulfs previous bullish candle
+        # curr_open > prev_close (starts above previous close)
+        # curr_close < prev_open (ends below previous open)
+        return curr_open > prev_close and curr_close < prev_open
+
+    def _has_pivot(self, period: 'Period') -> bool:
+        """Check if period has a pivot (high or low)."""
+        pivot_high = period._data.get(self.pivot_high_col)
+        pivot_low = period._data.get(self.pivot_low_col)
+        return pivot_high is not None or pivot_low is not None
 
     def calculate(self, periods: List['Period'], index: int) -> Optional[List[Optional[float]]]:
         """
         Calculate OrderBlock for the period at index.
 
         Order Blocks are detected when:
-        1. Current candle breaks in one direction
-        2. We find the last opposite candle within lookback
-        3. The opposite candle meets minimum body size requirement
+        1. Current candle engulfs previous candle (bullish or bearish engulfing)
+        2. One of the two candles (previous or current) is a pivot point
 
-        The OB is marked on the opposite candle (not the breakout candle).
+        The OB is marked on the ENGULFED candle (the one that got eaten).
 
         Parameters:
             periods: List of all periods
@@ -215,96 +186,40 @@ class OrderBlock(Indicator):
         if not self.validate_periods(periods, index):
             return [None, None]
 
-        # Need at least 2 periods (current + 1 for comparison)
+        # Need at least 2 periods for engulfing pattern
         if index < 1:
             return [None, None]
 
-        # Get current candle data
-        current_close = periods[index]._data.get(self.close_source)
-        if current_close is None:
-            return [None, None]
+        prev = periods[index - 1]
+        curr = periods[index]
 
-        current_is_bullish = self._is_bullish_candle(periods[index])
-        current_is_bearish = self._is_bearish_candle(periods[index])
+        # Check for bullish engulfing (bearish candle engulfed by bullish)
+        if self._is_bullish_engulfing(prev, curr):
+            # One of the two candles must be a pivot
+            if self._has_pivot(prev) or self._has_pivot(curr):
+                # Mark the engulfed bearish candle as Bullish OB
+                prev_high = prev._data.get(self.high_source)
+                prev_low = prev._data.get(self.low_source)
 
-        # Check if current candle has directional bias
-        if not current_is_bullish and not current_is_bearish:
-            return [None, None]
+                if prev_high is not None and prev_low is not None:
+                    # Only mark if not already marked
+                    if prev._data.get(self._output_columns[0]) is None:
+                        prev._data[self._output_columns[0]] = float(prev_high)
+                        prev._data[self._output_columns[1]] = float(prev_low)
 
-        # Look back for Order Block detection
-        if current_is_bullish:
-            # Looking for Bullish OB: last bearish candle before bullish breakout
-            # Search back for bearish candles
-            for i in range(index - 1, max(-1, index - self.lookback - 1), -1):
-                if i < 0:
-                    break
+        # Check for bearish engulfing (bullish candle engulfed by bearish)
+        elif self._is_bearish_engulfing(prev, curr):
+            # One of the two candles must be a pivot
+            if self._has_pivot(prev) or self._has_pivot(curr):
+                # Mark the engulfed bullish candle as Bearish OB
+                prev_high = prev._data.get(self.high_source)
+                prev_low = prev._data.get(self.low_source)
 
-                # Check if this is a bearish candle
-                if not self._is_bearish_candle(periods[i]):
-                    continue
-
-                # Check body size requirement
-                body_pct = self._get_body_size_pct(periods[i])
-                if body_pct is None or body_pct < self.min_body_pct:
-                    continue
-
-                # If pivot required, check for pivot in preceding candles
-                if self.require_pivot:
-                    if not self._has_pivot_before(periods, i):
-                        continue
-
-                # Check if current candle breaks above this bearish candle's high
-                bearish_high = periods[i]._data.get(self.high_source)
-                if bearish_high is None:
-                    continue
-
-                if current_close > bearish_high:
-                    # Bullish breakout detected!
-                    # Mark the bearish candle as Bullish Order Block
-                    bearish_low = periods[i]._data.get(self.low_source)
-                    if bearish_low is not None:
-                        # Only mark if not already marked (don't overwrite existing OB)
-                        if periods[i]._data.get(self._output_columns[0]) is None:
-                            periods[i]._data[self._output_columns[0]] = float(bearish_high)
-                            periods[i]._data[self._output_columns[1]] = float(bearish_low)
-                        break  # Only mark the last (most recent) bearish candle
-
-        elif current_is_bearish:
-            # Looking for Bearish OB: last bullish candle before bearish breakout
-            # Search back for bullish candles
-            for i in range(index - 1, max(-1, index - self.lookback - 1), -1):
-                if i < 0:
-                    break
-
-                # Check if this is a bullish candle
-                if not self._is_bullish_candle(periods[i]):
-                    continue
-
-                # Check body size requirement
-                body_pct = self._get_body_size_pct(periods[i])
-                if body_pct is None or body_pct < self.min_body_pct:
-                    continue
-
-                # If pivot required, check for pivot in preceding candles
-                if self.require_pivot:
-                    if not self._has_pivot_before(periods, i):
-                        continue
-
-                # Check if current candle breaks below this bullish candle's low
-                bullish_low = periods[i]._data.get(self.low_source)
-                if bullish_low is None:
-                    continue
-
-                if current_close < bullish_low:
-                    # Bearish breakout detected!
-                    # Mark the bullish candle as Bearish Order Block
-                    bullish_high = periods[i]._data.get(self.high_source)
-                    if bullish_high is not None:
-                        # Only mark if not already marked (don't overwrite existing OB)
-                        if periods[i]._data.get(self._output_columns[0]) is None:
-                            periods[i]._data[self._output_columns[0]] = float(bullish_high)
-                            periods[i]._data[self._output_columns[1]] = float(bullish_low)
-                        break  # Only mark the last (most recent) bullish candle
+                if prev_high is not None and prev_low is not None:
+                    # Only mark if not already marked
+                    if prev._data.get(self._output_columns[0]) is None:
+                        prev._data[self._output_columns[0]] = float(prev_high)
+                        prev._data[self._output_columns[1]] = float(prev_low)
 
         # Return the values for the CURRENT period (which may have been set earlier)
         high_value = periods[index]._data.get(self._output_columns[0])
@@ -314,9 +229,7 @@ class OrderBlock(Indicator):
 
     def __repr__(self) -> str:
         return (
-            f"OrderBlock(lookback={self.lookback}, min_body_pct={self.min_body_pct}, "
-            f"require_pivot={self.require_pivot}, pivot_lookback={self.pivot_lookback}, "
-            f"pivot_high_col='{self.pivot_high_col}', pivot_low_col='{self.pivot_low_col}', "
+            f"OrderBlock(pivot_high_col='{self.pivot_high_col}', pivot_low_col='{self.pivot_low_col}', "
             f"open_source='{self.open_source}', high_source='{self.high_source}', "
             f"low_source='{self.low_source}', close_source='{self.close_source}')"
         )
