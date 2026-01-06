@@ -131,6 +131,9 @@ class Frame:
         # Register indicator
         self.indicators[registry_key] = indicator
 
+        # Inform indicator of its output column names
+        indicator.set_output_columns(column_name)
+
         # Add columns to all existing periods and calculate
         for i, period in enumerate(self.periods):
             # Initialize columns

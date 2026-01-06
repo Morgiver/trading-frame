@@ -46,9 +46,7 @@ class PivotPoints(Indicator):
         left_bars: int = 5,
         right_bars: int = 2,
         high_source: str = 'high_price',
-        low_source: str = 'low_price',
-        high_column: str = 'PIVOT_HIGH',
-        low_column: str = 'PIVOT_LOW'
+        low_source: str = 'low_price'
     ):
         """
         Initialize PivotPoints indicator.
@@ -58,8 +56,6 @@ class PivotPoints(Indicator):
             right_bars: Number of bars to the right of pivot candidate (default: 2)
             high_source: Column name for high prices (default: 'high_price')
             low_source: Column name for low prices (default: 'low_price')
-            high_column: Output column name for pivot highs (default: 'PIVOT_HIGH')
-            low_column: Output column name for pivot lows (default: 'PIVOT_LOW')
 
         Raises:
             ValueError: If left_bars < 1 or right_bars < 1
@@ -73,12 +69,13 @@ class PivotPoints(Indicator):
         self.right_bars = right_bars
         self.high_source = high_source
         self.low_source = low_source
-        self.high_column = high_column
-        self.low_column = low_column
 
         # Track last confirmed pivot state for alternation rule
         self._last_pivot_type = None  # 'high' or 'low'
         self._last_pivot_index = None  # Index where last pivot was confirmed
+
+        # Will be set by Frame via set_output_columns()
+        self._output_columns = None
 
     def requires_min_periods(self) -> int:
         """
@@ -233,10 +230,10 @@ class PivotPoints(Indicator):
                     # Alternation rule: if last was also a high, replace it
                     if self._last_pivot_type == 'high' and self._last_pivot_index is not None:
                         # Clear the previous high
-                        periods[self._last_pivot_index]._data[self.high_column] = None
+                        periods[self._last_pivot_index]._data[self._output_columns[0]] = None
 
                     # Update the CANDIDATE period, not the current one
-                    periods[candidate_idx]._data[self.high_column] = float(candidate_high)
+                    periods[candidate_idx]._data[self._output_columns[0]] = float(candidate_high)
                     self._last_pivot_type = 'high'
                     self._last_pivot_index = candidate_idx
 
@@ -246,22 +243,21 @@ class PivotPoints(Indicator):
                     # Alternation rule: if last was also a low, replace it
                     if self._last_pivot_type == 'low' and self._last_pivot_index is not None:
                         # Clear the previous low
-                        periods[self._last_pivot_index]._data[self.low_column] = None
+                        periods[self._last_pivot_index]._data[self._output_columns[1]] = None
 
                     # Update the CANDIDATE period, not the current one
-                    periods[candidate_idx]._data[self.low_column] = float(candidate_low)
+                    periods[candidate_idx]._data[self._output_columns[1]] = float(candidate_low)
                     self._last_pivot_type = 'low'
                     self._last_pivot_index = candidate_idx
 
         # Return the values for the CURRENT period (which may have been set earlier)
-        high_value = periods[index]._data.get(self.high_column)
-        low_value = periods[index]._data.get(self.low_column)
+        high_value = periods[index]._data.get(self._output_columns[0])
+        low_value = periods[index]._data.get(self._output_columns[1])
 
         return [high_value, low_value]
 
     def __repr__(self) -> str:
         return (
             f"PivotPoints(left_bars={self.left_bars}, right_bars={self.right_bars}, "
-            f"high_source='{self.high_source}', low_source='{self.low_source}', "
-            f"high_column='{self.high_column}', low_column='{self.low_column}')"
+            f"high_source='{self.high_source}', low_source='{self.low_source}')"
         )

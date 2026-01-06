@@ -16,6 +16,18 @@ class Indicator(ABC):
     using TA-Lib for calculations when possible.
     """
 
+    def set_output_columns(self, column_names: Union[str, List[str]]) -> None:
+        """
+        Called by Frame to inform the indicator of its output column name(s).
+
+        This allows indicators that need to write directly to period._data
+        (like PivotPoints) to know the correct column names.
+
+        Parameters:
+            column_names: Single column name (str) or list of column names
+        """
+        self._output_columns = [column_names] if isinstance(column_names, str) else column_names
+
     @abstractmethod
     def calculate(self, periods: List['Period'], index: int) -> Union[Any, List[Any]]:
         """

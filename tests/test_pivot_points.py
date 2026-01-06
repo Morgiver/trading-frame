@@ -50,17 +50,6 @@ class TestPivotPointsBasic:
         assert pivot.high_source == 'custom_high'
         assert pivot.low_source == 'custom_low'
 
-    def test_initialization_custom_columns(self):
-        """Test PivotPoints with custom column names."""
-        pivot = PivotPoints(
-            left_bars=5,
-            right_bars=2,
-            high_column='SWING_HIGH',
-            low_column='SWING_LOW'
-        )
-        assert pivot.high_column == 'SWING_HIGH'
-        assert pivot.low_column == 'SWING_LOW'
-
     def test_invalid_left_bars(self):
         """Test that left_bars must be >= 1."""
         with pytest.raises(ValueError, match="left_bars must be at least 1"):
@@ -478,9 +467,7 @@ class TestPivotPointsIntegration:
         frame = TimeFrame('1T', max_periods=50)
         pivot = PivotPoints(
             left_bars=2,
-            right_bars=2,
-            high_column='SWING_HIGH',
-            low_column='SWING_LOW'
+            right_bars=2
         )
 
         base_date = datetime(2024, 1, 1, 12, 0)
