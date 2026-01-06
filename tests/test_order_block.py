@@ -470,6 +470,12 @@ class TestOrderBlockPivotFilter:
             )
             frame.feed(candle)
 
+        # Manually inject pivot columns (simulates PivotPoints indicator output)
+        for period in frame.periods:
+            period._data['PIVOT_HIGH'] = None
+            period._data['PIVOT_LOW'] = None
+        frame.periods[1]._data['PIVOT_LOW'] = 95.0  # Pivot at index 1
+
         frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
         # OB should be detected at index 3 (has pivot at index 1)
@@ -506,6 +512,11 @@ class TestOrderBlockPivotFilter:
                 close=data['close']
             )
             frame.feed(candle)
+
+        # Inject empty pivot columns (no actual pivots)
+        for period in frame.periods:
+            period._data['PIVOT_HIGH'] = None
+            period._data['PIVOT_LOW'] = None
 
         frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
@@ -544,6 +555,12 @@ class TestOrderBlockPivotFilter:
             )
             frame.feed(candle)
 
+        # Manually inject pivot columns (simulates PivotPoints indicator output)
+        for period in frame.periods:
+            period._data['PIVOT_HIGH'] = None
+            period._data['PIVOT_LOW'] = None
+        frame.periods[1]._data['PIVOT_HIGH'] = 110.0  # Pivot high at index 1
+
         frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
         # Bearish OB should be detected at index 3 (has swing high at index 1)
@@ -581,8 +598,14 @@ class TestOrderBlockPivotFilter:
             )
             frame.feed(candle)
 
+        # Manually inject pivot columns (simulates PivotPoints indicator output)
+        for period in frame.periods:
+            period._data['PIVOT_HIGH'] = None
+            period._data['PIVOT_LOW'] = None
+        frame.periods[0]._data['PIVOT_LOW'] = 95.0  # Pivot at index 0 (3 candles before OB)
+
         frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
-        # OB should NOT be detected (pivot is outside pivot_lookback range)
+        # OB should NOT be detected (pivot is outside pivot_lookback=2 range)
         assert frame.periods[3].OB_HIGH is None
         assert frame.periods[3].OB_LOW is None

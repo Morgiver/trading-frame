@@ -12,6 +12,7 @@ from datetime import datetime
 
 from trading_frame import Candle, TimeFrame
 from trading_frame.indicators.trend.order_block import OrderBlock
+from trading_frame.indicators.trend.pivot_points import PivotPoints
 
 
 def main():
@@ -30,13 +31,18 @@ def main():
     print("\n2. Creating TimeFrame...")
     frame = TimeFrame('15T', max_periods=500)
 
-    # 3. Add OrderBlock indicator with pivot filter
-    print("3. Adding OrderBlock indicator (lookback=10, min_body=30%, require_pivot=True)...")
+    # 3. Add PivotPoints indicator (required for OrderBlock pivot filter)
+    print("3. Adding PivotPoints indicator (left=5, right=2)...")
+    pivot = PivotPoints(left_bars=5, right_bars=2)
+    frame.add_indicator(pivot, ['PIVOT_HIGH', 'PIVOT_LOW'])
+
+    # 4. Add OrderBlock indicator with pivot filter
+    print("4. Adding OrderBlock indicator (lookback=10, min_body=30%, require_pivot=True)...")
     ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
     frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
-    # 4. Feed data to frame
-    print("4. Processing candles...")
+    # 5. Feed data to frame
+    print("5. Processing candles...")
     for date, row in data.iterrows():
         candle = Candle(
             date=date,
@@ -48,14 +54,16 @@ def main():
         )
         frame.feed(candle)
 
-    # 5. Count Order Blocks
+    # 6. Count Pivots and Order Blocks
+    pivot_count = sum(1 for p in frame.periods if p.PIVOT_HIGH is not None or p.PIVOT_LOW is not None)
     ob_count = sum(1 for p in frame.periods if p.OB_HIGH is not None)
 
-    print(f"\n5. Results:")
-    print(f"   Total Order Blocks detected: {ob_count}")
+    print(f"\n6. Results:")
+    print(f"   Pivots detected: {pivot_count}")
+    print(f"   Order Blocks detected: {ob_count}")
 
-    # 6. Export to pandas
-    print("\n6. Creating visualization...")
+    # 7. Export to pandas
+    print("\n7. Creating visualization...")
     df = frame.to_pandas()
     df.set_index('open_date', inplace=True)
 
@@ -68,7 +76,7 @@ def main():
         'volume': 'Volume'
     }, inplace=True)
 
-    # 7. Prepare OB visualization
+    # 8. Prepare Pivot and OB visualization
     ob_zones = []
 
     for idx, row in df.iterrows():
@@ -82,8 +90,39 @@ def main():
                 'low': ob_low
             })
 
-    # Create additional plots for OB zones
+    # Prepare pivot markers
+    pivot_highs = pd.Series(index=df.index, dtype=float)
+    pivot_lows = pd.Series(index=df.index, dtype=float)
+
+    for idx, row in df.iterrows():
+        if pd.notna(row['PIVOT_HIGH']):
+            pivot_highs.loc[idx] = row['PIVOT_HIGH']
+        if pd.notna(row['PIVOT_LOW']):
+            pivot_lows.loc[idx] = row['PIVOT_LOW']
+
+    # Create additional plots for pivots and OB zones
     addplots = []
+
+    # Plot pivots
+    if pivot_highs.notna().any():
+        addplots.append(mpf.make_addplot(
+            pivot_highs,
+            type='scatter',
+            markersize=100,
+            marker='v',
+            color='red',
+            alpha=0.6
+        ))
+
+    if pivot_lows.notna().any():
+        addplots.append(mpf.make_addplot(
+            pivot_lows,
+            type='scatter',
+            markersize=100,
+            marker='^',
+            color='lime',
+            alpha=0.6
+        ))
 
     # Plot OB zones as markers
     if ob_zones:
@@ -117,7 +156,7 @@ def main():
         df,
         type='candle',
         style='charles',
-        title=f'{ticker} - Order Blocks (15-minute timeframe)\nOrange lines mark institutional zones',
+        title=f'{ticker} - Order Blocks with Pivot Filter (15min)\nRed/Green=Pivots | Orange=Order Blocks',
         ylabel='Price',
         volume=True,
         addplot=addplots if addplots else None,
@@ -129,7 +168,7 @@ def main():
 
     # Show some OB details
     if ob_zones:
-        print(f"\n7. Order Block Details (first 5):")
+        print(f"\n8. Order Block Details (first 5):")
         for i, zone in enumerate(ob_zones[:5]):
             print(f"   OB #{i+1}: DateTime={zone['date'].strftime('%Y-%m-%d %H:%M')}, "
                   f"Range=[{zone['low']:.2f}, {zone['high']:.2f}], "
