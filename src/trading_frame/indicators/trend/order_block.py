@@ -34,6 +34,8 @@ class OrderBlock(Indicator):
     Parameters:
         lookback: Maximum periods to search back for opposite candle (default: 10)
         min_body_pct: Minimum body size as % of candle range to filter noise (default: 0.3 = 30%)
+        require_pivot: If True, require a pivot point in the 2-3 candles before OB (default: False)
+        pivot_lookback: Candles to check for pivot before OB (default: 3)
 
     Trading Applications:
     - Price often returns to OB zones (liquidity areas)
@@ -49,6 +51,8 @@ class OrderBlock(Indicator):
         self,
         lookback: int = 10,
         min_body_pct: float = 0.3,
+        require_pivot: bool = False,
+        pivot_lookback: int = 3,
         open_source: str = 'open_price',
         high_source: str = 'high_price',
         low_source: str = 'low_price',
@@ -60,21 +64,27 @@ class OrderBlock(Indicator):
         Parameters:
             lookback: Maximum periods to look back for opposite candle (default: 10)
             min_body_pct: Minimum body size as % of range (0-1, default: 0.3)
+            require_pivot: Require pivot in preceding candles (default: False)
+            pivot_lookback: Candles to check for pivot before OB (default: 3)
             open_source: Column name for open prices (default: 'open_price')
             high_source: Column name for high prices (default: 'high_price')
             low_source: Column name for low prices (default: 'low_price')
             close_source: Column name for close prices (default: 'close_price')
 
         Raises:
-            ValueError: If lookback < 1 or min_body_pct < 0 or min_body_pct > 1
+            ValueError: If lookback < 1 or min_body_pct < 0 or min_body_pct > 1 or pivot_lookback < 2
         """
         if lookback < 1:
             raise ValueError("lookback must be at least 1")
         if min_body_pct < 0 or min_body_pct > 1:
             raise ValueError("min_body_pct must be between 0 and 1")
+        if pivot_lookback < 2:
+            raise ValueError("pivot_lookback must be at least 2")
 
         self.lookback = lookback
         self.min_body_pct = min_body_pct
+        self.require_pivot = require_pivot
+        self.pivot_lookback = pivot_lookback
         self.open_source = open_source
         self.high_source = high_source
         self.low_source = low_source
@@ -132,6 +142,78 @@ class OrderBlock(Indicator):
         body_size = abs(close_val - open_val)
         return body_size / candle_range
 
+    def _has_pivot_before(self, periods: List['Period'], ob_index: int) -> bool:
+        """
+        Check if there's a pivot (swing high or swing low) in the 2-3 candles
+        before the potential Order Block candle.
+
+        For bullish OB (bearish candle), look for swing low before it.
+        For bearish OB (bullish candle), look for swing high before it.
+
+        Parameters:
+            periods: List of all periods
+            ob_index: Index of the potential OB candle
+
+        Returns:
+            True if pivot found in preceding candles, False otherwise
+        """
+        # Need at least pivot_lookback candles before OB
+        if ob_index < self.pivot_lookback:
+            return False
+
+        is_bullish_ob = self._is_bearish_candle(periods[ob_index])  # Bearish candle = Bullish OB
+        is_bearish_ob = self._is_bullish_candle(periods[ob_index])  # Bullish candle = Bearish OB
+
+        # Check the pivot_lookback candles immediately before the OB candle
+        start_idx = max(0, ob_index - self.pivot_lookback)
+        end_idx = ob_index  # Exclusive, so we check candles before OB
+
+        for i in range(start_idx, end_idx):
+            if is_bullish_ob:
+                # For bullish OB, look for swing low (pivot low)
+                if self._is_swing_low(periods, i):
+                    return True
+            elif is_bearish_ob:
+                # For bearish OB, look for swing high (pivot high)
+                if self._is_swing_high(periods, i):
+                    return True
+
+        return False
+
+    def _is_swing_high(self, periods: List['Period'], index: int) -> bool:
+        """
+        Check if candle at index is a swing high (local high).
+        Simple check: high is higher than previous and next candle highs.
+        """
+        if index < 1 or index >= len(periods) - 1:
+            return False
+
+        curr_high = periods[index]._data.get(self.high_source)
+        prev_high = periods[index - 1]._data.get(self.high_source)
+        next_high = periods[index + 1]._data.get(self.high_source)
+
+        if any(v is None for v in [curr_high, prev_high, next_high]):
+            return False
+
+        return curr_high > prev_high and curr_high > next_high
+
+    def _is_swing_low(self, periods: List['Period'], index: int) -> bool:
+        """
+        Check if candle at index is a swing low (local low).
+        Simple check: low is lower than previous and next candle lows.
+        """
+        if index < 1 or index >= len(periods) - 1:
+            return False
+
+        curr_low = periods[index]._data.get(self.low_source)
+        prev_low = periods[index - 1]._data.get(self.low_source)
+        next_low = periods[index + 1]._data.get(self.low_source)
+
+        if any(v is None for v in [curr_low, prev_low, next_low]):
+            return False
+
+        return curr_low < prev_low and curr_low < next_low
+
     def calculate(self, periods: List['Period'], index: int) -> Optional[List[Optional[float]]]:
         """
         Calculate OrderBlock for the period at index.
@@ -187,6 +269,11 @@ class OrderBlock(Indicator):
                 if body_pct is None or body_pct < self.min_body_pct:
                     continue
 
+                # If pivot required, check for pivot in preceding candles
+                if self.require_pivot:
+                    if not self._has_pivot_before(periods, i):
+                        continue
+
                 # Check if current candle breaks above this bearish candle's high
                 bearish_high = periods[i]._data.get(self.high_source)
                 if bearish_high is None:
@@ -219,6 +306,11 @@ class OrderBlock(Indicator):
                 if body_pct is None or body_pct < self.min_body_pct:
                     continue
 
+                # If pivot required, check for pivot in preceding candles
+                if self.require_pivot:
+                    if not self._has_pivot_before(periods, i):
+                        continue
+
                 # Check if current candle breaks below this bullish candle's low
                 bullish_low = periods[i]._data.get(self.low_source)
                 if bullish_low is None:
@@ -244,6 +336,7 @@ class OrderBlock(Indicator):
     def __repr__(self) -> str:
         return (
             f"OrderBlock(lookback={self.lookback}, min_body_pct={self.min_body_pct}, "
+            f"require_pivot={self.require_pivot}, pivot_lookback={self.pivot_lookback}, "
             f"open_source='{self.open_source}', high_source='{self.high_source}', "
             f"low_source='{self.low_source}', close_source='{self.close_source}')"
         )

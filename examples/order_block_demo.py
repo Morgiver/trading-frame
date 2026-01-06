@@ -30,9 +30,9 @@ def main():
     print("\n2. Creating TimeFrame...")
     frame = TimeFrame('15T', max_periods=500)
 
-    # 3. Add OrderBlock indicator
-    print("3. Adding OrderBlock indicator (lookback=10, min_body=30%)...")
-    ob = OrderBlock(lookback=10, min_body_pct=0.3)
+    # 3. Add OrderBlock indicator with pivot filter
+    print("3. Adding OrderBlock indicator (lookback=10, min_body=30%, require_pivot=True)...")
+    ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
     frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
 
     # 4. Feed data to frame

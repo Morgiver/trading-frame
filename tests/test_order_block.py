@@ -30,6 +30,8 @@ class TestOrderBlockBasic:
         ob = OrderBlock()
         assert ob.lookback == 10
         assert ob.min_body_pct == 0.3
+        assert ob.require_pivot is False
+        assert ob.pivot_lookback == 3
         assert ob.open_source == 'open_price'
         assert ob.high_source == 'high_price'
         assert ob.low_source == 'low_price'
@@ -427,3 +429,160 @@ class TestOrderBlockMultiple:
         # Check both OBs detected
         assert frame.periods[0].OB_HIGH == 110.0
         assert frame.periods[3].OB_HIGH == 122.0
+
+
+class TestOrderBlockPivotFilter:
+    """Test pivot filter functionality."""
+
+    def test_pivot_filter_disabled_by_default(self):
+        """Test that pivot filter is disabled by default."""
+        ob = OrderBlock()
+        assert ob.require_pivot is False
+
+    def test_pivot_filter_enabled(self):
+        """Test OrderBlock with pivot filter enabled."""
+        frame = TimeFrame('1T', max_periods=50)
+        ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
+
+        base_date = datetime(2024, 1, 1, 12, 0)
+
+        # Setup: Create a bullish OB scenario WITH a pivot before it
+        candles_data = [
+            # Create a swing low (pivot)
+            {'open': 102, 'high': 104, 'low': 98, 'close': 100},  # Before pivot
+            {'open': 100, 'high': 102, 'low': 95, 'close': 96},   # Swing low (PIVOT)
+            {'open': 96, 'high': 100, 'low': 94, 'close': 98},    # After pivot
+            # Bearish candle (potential OB) - has pivot before it
+            {'open': 105, 'high': 110, 'low': 95, 'close': 98},   # Bearish OB with pivot
+            {'open': 99, 'high': 104, 'low': 96, 'close': 101},
+            # Bullish breakout
+            {'open': 102, 'high': 120, 'low': 100, 'close': 115}, # Breakout above 110
+        ]
+
+        for i, data in enumerate(candles_data):
+            date = base_date + timedelta(minutes=i)
+            candle = create_candle(
+                date,
+                open_val=data['open'],
+                high=data['high'],
+                low=data['low'],
+                close=data['close']
+            )
+            frame.feed(candle)
+
+        frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
+
+        # OB should be detected at index 3 (has pivot at index 1)
+        assert frame.periods[3].OB_HIGH == 110.0
+        assert frame.periods[3].OB_LOW == 95.0
+
+    def test_pivot_filter_rejects_ob_without_pivot(self):
+        """Test that OB is NOT detected when no pivot exists before it."""
+        frame = TimeFrame('1T', max_periods=50)
+        ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
+
+        base_date = datetime(2024, 1, 1, 12, 0)
+
+        # Setup: Create a bullish OB scenario WITHOUT a pivot before it
+        candles_data = [
+            # No pivot structure - just trending candles
+            {'open': 100, 'high': 102, 'low': 98, 'close': 101},
+            {'open': 101, 'high': 103, 'low': 99, 'close': 102},
+            {'open': 102, 'high': 104, 'low': 100, 'close': 103},
+            # Bearish candle (potential OB) - NO pivot before it
+            {'open': 105, 'high': 110, 'low': 95, 'close': 98},   # Bearish OB without pivot
+            {'open': 99, 'high': 104, 'low': 96, 'close': 101},
+            # Bullish breakout
+            {'open': 102, 'high': 120, 'low': 100, 'close': 115}, # Breakout above 110
+        ]
+
+        for i, data in enumerate(candles_data):
+            date = base_date + timedelta(minutes=i)
+            candle = create_candle(
+                date,
+                open_val=data['open'],
+                high=data['high'],
+                low=data['low'],
+                close=data['close']
+            )
+            frame.feed(candle)
+
+        frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
+
+        # OB should NOT be detected (no pivot before it)
+        assert frame.periods[3].OB_HIGH is None
+        assert frame.periods[3].OB_LOW is None
+
+    def test_bearish_ob_requires_swing_high(self):
+        """Test that bearish OB requires swing high (not swing low) before it."""
+        frame = TimeFrame('1T', max_periods=50)
+        ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=3)
+
+        base_date = datetime(2024, 1, 1, 12, 0)
+
+        # Setup: Create a bearish OB scenario WITH swing high before it
+        candles_data = [
+            # Create a swing high (pivot)
+            {'open': 98, 'high': 102, 'low': 96, 'close': 100},   # Before pivot
+            {'open': 100, 'high': 110, 'low': 98, 'close': 105},  # Swing high (PIVOT)
+            {'open': 105, 'high': 107, 'low': 100, 'close': 102}, # After pivot
+            # Bullish candle (potential bearish OB) - has swing high before it
+            {'open': 98, 'high': 105, 'low': 95, 'close': 102},   # Bullish OB with pivot
+            {'open': 101, 'high': 104, 'low': 96, 'close': 99},
+            # Bearish breakout
+            {'open': 98, 'high': 100, 'low': 80, 'close': 85},    # Breakout below 95
+        ]
+
+        for i, data in enumerate(candles_data):
+            date = base_date + timedelta(minutes=i)
+            candle = create_candle(
+                date,
+                open_val=data['open'],
+                high=data['high'],
+                low=data['low'],
+                close=data['close']
+            )
+            frame.feed(candle)
+
+        frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
+
+        # Bearish OB should be detected at index 3 (has swing high at index 1)
+        assert frame.periods[3].OB_HIGH == 105.0
+        assert frame.periods[3].OB_LOW == 95.0
+
+    def test_pivot_lookback_parameter(self):
+        """Test that pivot_lookback parameter controls search range."""
+        frame = TimeFrame('1T', max_periods=50)
+        # Use pivot_lookback=2 (only check 2 candles before OB)
+        ob = OrderBlock(lookback=10, min_body_pct=0.3, require_pivot=True, pivot_lookback=2)
+
+        base_date = datetime(2024, 1, 1, 12, 0)
+
+        # Setup: Pivot is 3 candles before OB (outside pivot_lookback=2)
+        candles_data = [
+            {'open': 100, 'high': 102, 'low': 95, 'close': 96},   # Swing low (PIVOT) - index 0
+            {'open': 96, 'high': 100, 'low': 96, 'close': 98},    # +1 from pivot (no pivot)
+            {'open': 98, 'high': 102, 'low': 97, 'close': 100},   # +2 from pivot (no pivot)
+            # Bearish candle (potential OB) - pivot is 3 candles back (too far)
+            {'open': 105, 'high': 110, 'low': 95, 'close': 98},   # Bearish OB at index 3
+            {'open': 99, 'high': 104, 'low': 96, 'close': 101},
+            # Bullish breakout
+            {'open': 102, 'high': 120, 'low': 100, 'close': 115},
+        ]
+
+        for i, data in enumerate(candles_data):
+            date = base_date + timedelta(minutes=i)
+            candle = create_candle(
+                date,
+                open_val=data['open'],
+                high=data['high'],
+                low=data['low'],
+                close=data['close']
+            )
+            frame.feed(candle)
+
+        frame.add_indicator(ob, ['OB_HIGH', 'OB_LOW'])
+
+        # OB should NOT be detected (pivot is outside pivot_lookback range)
+        assert frame.periods[3].OB_HIGH is None
+        assert frame.periods[3].OB_LOW is None
