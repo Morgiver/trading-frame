@@ -283,3 +283,61 @@ class Frame:
         df['volume'] = df['volume'].astype(float)
 
         return df
+
+    def to_normalize(self):
+        """
+        Convert all periods to normalized numpy array.
+
+        Normalization strategies:
+        - OHLC: Unified Min-Max normalization across all price values
+        - Volume: Independent Min-Max normalization across all volumes
+
+        Returns:
+            numpy.ndarray: 2D array with normalized OHLCV values in range [0, 1]
+        """
+        import numpy as np
+
+        if not self.periods:
+            return np.array([], dtype=np.float64).reshape(0, 5)
+
+        # Step 1: Extract all OHLC and Volume values
+        price_values = []
+        volume_values = []
+
+        for period in self.periods:
+            if period.open_price is not None:
+                price_values.append(float(period.open_price))
+            if period.high_price is not None:
+                price_values.append(float(period.high_price))
+            if period.low_price is not None:
+                price_values.append(float(period.low_price))
+            if period.close_price is not None:
+                price_values.append(float(period.close_price))
+            volume_values.append(float(period.volume))
+
+        # Step 2: Calculate Price and Volume ranges
+        price_array = np.array(price_values)
+        volume_array = np.array(volume_values)
+
+        price_min = float(np.min(price_array)) if len(price_array) > 0 else 0.0
+        price_max = float(np.max(price_array)) if len(price_array) > 0 else 1.0
+        volume_min = float(np.min(volume_array)) if len(volume_array) > 0 else 0.0
+        volume_max = float(np.max(volume_array)) if len(volume_array) > 0 else 1.0
+
+        # Avoid division by zero
+        price_range = price_max - price_min if price_max != price_min else 1.0
+        volume_range = volume_max - volume_min if volume_max != volume_min else 1.0
+
+        # Step 3: Build normalized data
+        data = []
+        for period in self.periods:
+            row = [
+                (float(period.open_price) - price_min) / price_range if period.open_price is not None else np.nan,
+                (float(period.high_price) - price_min) / price_range if period.high_price is not None else np.nan,
+                (float(period.low_price) - price_min) / price_range if period.low_price is not None else np.nan,
+                (float(period.close_price) - price_min) / price_range if period.close_price is not None else np.nan,
+                (float(period.volume) - volume_min) / volume_range
+            ]
+            data.append(row)
+
+        return np.array(data, dtype=np.float64)

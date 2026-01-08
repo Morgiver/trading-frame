@@ -49,6 +49,7 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **Frame**: Base class for data aggregation with event system
 - **TimeFrame**: Time-based period aggregation (seconds, minutes, hours, days, weeks, months, years)
 - **Export**: Convert frames to NumPy arrays or Pandas DataFrames
+- **Normalization**: ML-ready normalized data with Min-Max scaling
 - **Prefill**: Efficient warm-up mechanism to fill frames before live trading
 
 ## Installation
@@ -159,6 +160,24 @@ data = frame.to_numpy()  # Returns [[open, high, low, close, volume], ...]
 import pandas as pd
 df = frame.to_pandas()  # Returns DataFrame with OHLCV columns
 print(df.head())
+```
+
+### Normalized Data for Machine Learning
+
+Trading Frame provides normalized OHLCV data ready for ML models:
+
+```python
+# Export normalized data to [0, 1] range
+normalized = frame.to_normalize()  # NumPy array with normalized values
+
+# Normalization strategies:
+# - OHLC: Unified Min-Max across all price values
+# - Volume: Independent Min-Max across all volumes
+# All values scaled to [0, 1] range
+
+# Perfect for feeding into neural networks, LSTMs, etc.
+import torch
+tensor = torch.from_numpy(normalized)
 ```
 
 ## Supported Time Ranges
