@@ -6,7 +6,10 @@ from .base import Indicator
 from .momentum import RSI, MACD
 
 # Trend indicators
-from .trend import SMA, BollingerBands, PivotPoints
+from .trend import SMA, EMA, BollingerBands, PivotPoints
+
+# Volatility indicators
+from .volatility import ATR
 
 __all__ = [
     'Indicator',
@@ -15,6 +18,9 @@ __all__ = [
     'MACD',
     # Trend
     'SMA',
+    'EMA',
     'BollingerBands',
     'PivotPoints',
+    # Volatility
+    'ATR',
 ]
