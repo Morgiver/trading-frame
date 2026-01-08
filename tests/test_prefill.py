@@ -170,35 +170,6 @@ class TestPrefillValidation:
 class TestPrefillIntegration:
     """Integration tests for prefill()."""
 
-    def test_prefill_with_indicators(self):
-        """Test prefill works correctly with indicators."""
-        from trading_frame.indicators.momentum.rsi import RSI
-
-        frame = TimeFrame('1T', max_periods=50)
-        frame.add_indicator(RSI(length=14), 'RSI_14')
-
-        # Prefill frame
-        for i in range(60):
-            candle = Candle(
-                date=datetime(2024, 1, 1, 0, i),
-                open=100.0 + i,
-                high=105.0 + i,
-                low=95.0 + i,
-                close=102.0 + i,
-                volume=Decimal('1000.0')
-            )
-
-            result = frame.prefill(candle)
-            if result:
-                break
-
-        # Should be full
-        assert len(frame.periods) == 50
-
-        # Indicators should be calculated
-        for period in frame.periods[-10:]:
-            assert 'RSI_14' in period._data
-
     def test_prefill_typical_warmup_scenario(self):
         """Test typical warm-up scenario before live trading."""
         frame = TimeFrame('5T', max_periods=100)

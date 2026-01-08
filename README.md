@@ -2,6 +2,42 @@
 
 A Python package to manage and organize trading data into various frame types.
 
+## ⚠️ Breaking Change (v0.4.0)
+
+**Technical indicators have been moved to a separate package:** [trading-indicators](https://github.com/Morgiver/trading-indicators)
+
+If you were using indicators from `trading-frame`, you need to install the new package:
+
+```bash
+pip install git+https://github.com/Morgiver/trading-indicators.git
+```
+
+### Migration Guide
+
+**Old way (v0.3.x):**
+```python
+from trading_frame import Frame
+from trading_frame.indicators import RSI, SMA, MACD
+frame.add_indicator(RSI(14), 'RSI_14')
+```
+
+**New way (v0.4.x):**
+```python
+from trading_frame import Frame
+from trading_indicators import RSI, SMA, MACD
+rsi = RSI(frame=frame, length=14, column_name='RSI_14')
+```
+
+The new architecture provides:
+- 🔄 **Automatic synchronization** with frame events
+- 📊 **Period-by-period calculation** (more efficient)
+- 🎯 **Simpler API** with automatic frame binding
+- 🔗 **Composite indicators** support
+
+See [trading-indicators documentation](https://github.com/Morgiver/trading-indicators) for details.
+
+---
+
 ## Overview
 
 Trading Frame provides a clean API to aggregate raw trading data (candles) into organized periods using different time-based frames.
@@ -12,29 +48,8 @@ Trading Frame provides a clean API to aggregate raw trading data (candles) into 
 - **Period**: Aggregated data over a time range with Decimal precision for volumes
 - **Frame**: Base class for data aggregation with event system
 - **TimeFrame**: Time-based period aggregation (seconds, minutes, hours, days, weeks, months, years)
-- **Indicators**: Technical indicators using TA-Lib (RSI, MACD, SMA, Bollinger Bands, Pivot Points, and more)
-- **Export**: Convert frames to NumPy arrays or Pandas DataFrames with indicator columns
-- **Normalization**: Intelligent normalization strategies for ML (OHLC, Volume, and indicator-specific)
+- **Export**: Convert frames to NumPy arrays or Pandas DataFrames
 - **Prefill**: Efficient warm-up mechanism to fill frames before live trading
-
-## Examples
-
-The `examples/` directory contains complete demonstrations of all indicators using real market data:
-
-- **`rsi_demo.py`** - RSI indicator with overbought/oversold levels
-- **`macd_demo.py`** - MACD with bullish/bearish crossover detection
-- **`sma_demo.py`** - Multiple moving averages (SMA 20, 50, 200) with Golden/Death Cross
-- **`bollinger_demo.py`** - Bollinger Bands with volatility analysis
-- **`pivot_points_demo.py`** - Swing High/Low detection for support/resistance
-
-All examples use **Yahoo Finance** to download real **Nasdaq Composite (^IXIC)** data and visualize results with **mplfinance**.
-
-```bash
-# Run any example
-python examples/rsi_demo.py
-python examples/macd_demo.py
-python examples/pivot_points_demo.py
-```
 
 ## Installation
 
@@ -50,12 +65,6 @@ pip install git+https://github.com/Morgiver/trading-frame.git
 git clone https://github.com/Morgiver/trading-frame.git
 cd trading-frame
 pip install -e .
-```
-
-### Install Example Dependencies
-
-```bash
-pip install yfinance mplfinance matplotlib
 ```
 
 ## Usage
@@ -139,130 +148,18 @@ frame.on('new_period', on_new_period)
 frame.on('close', on_period_close)
 ```
 
-### Technical Indicators
-
-```python
-from trading_frame.indicators.momentum.rsi import RSI
-from trading_frame.indicators.momentum.macd import MACD
-from trading_frame.indicators.trend.sma import SMA
-from trading_frame.indicators.trend.bollinger import BollingerBands
-from trading_frame.indicators.trend.pivot_points import PivotPoints
-
-# Add single-column indicator
-frame.add_indicator(RSI(length=14), 'RSI_14')
-
-# Add multi-column indicator
-frame.add_indicator(
-    MACD(fast=12, slow=26, signal=9),
-    ['MACD_LINE', 'MACD_SIGNAL', 'MACD_HIST']
-)
-
-# Add moving averages
-frame.add_indicator(SMA(period=20), 'SMA_20')
-frame.add_indicator(SMA(period=50), 'SMA_50')
-
-# Add Bollinger Bands
-frame.add_indicator(
-    BollingerBands(period=20, std_dev=2),
-    ['BB_UPPER', 'BB_MIDDLE', 'BB_LOWER']
-)
-
-# Add Pivot Points (Swing High/Low detection)
-frame.add_indicator(
-    PivotPoints(left_bars=5, right_bars=2),
-    ['PIVOT_HIGH', 'PIVOT_LOW']
-)
-
-# Access indicator values
-for period in frame.periods:
-    print(f"RSI: {period.RSI_14}, SMA20: {period.SMA_20}")
-    if period.PIVOT_HIGH:
-        print(f"  Swing High detected at {period.PIVOT_HIGH}")
-    if period.PIVOT_LOW:
-        print(f"  Swing Low detected at {period.PIVOT_LOW}")
-
-# Dependent indicators (indicator calculated from another indicator)
-frame.add_indicator(SMA(period=5, source='RSI_14'), 'RSI_SMA')
-
-# Remove indicator
-frame.remove_indicator('RSI_14')
-```
-
-### Pivot Points (Swing High/Low Detection)
-
-Pivot Points detect local highs and lows based on surrounding bars:
-
-```python
-from trading_frame.indicators.trend.pivot_points import PivotPoints
-
-# Create indicator with asymmetric confirmation
-pivot = PivotPoints(
-    left_bars=5,   # Compare with 5 bars to the left
-    right_bars=2   # Confirm with 2 bars to the right
-)
-
-frame.add_indicator(pivot, ['PIVOT_HIGH', 'PIVOT_LOW'])
-
-# Access pivot points
-for i, period in enumerate(frame.periods):
-    if period.PIVOT_HIGH is not None:
-        print(f"Swing High at index {i}: {period.PIVOT_HIGH}")
-    if period.PIVOT_LOW is not None:
-        print(f"Swing Low at index {i}: {period.PIVOT_LOW}")
-```
-
-**How it works:**
-
-- **Swing High**: Detected when `high[0]` is greater than all `high[-left_bars..-1]` and `high[1..right_bars]`
-- **Swing Low**: Detected when `low[0]` is lower than all `low[-left_bars..-1]` and `low[1..right_bars]`
-- **Confirmation Lag**: Pivots are confirmed `right_bars` periods after the candidate
-  - With `right_bars=2`, a pivot at index 100 is confirmed at index 102
-  - The pivot value is assigned to the candidate bar (100), not the confirmation bar (102)
-
-**Use cases:**
-
-- Support/Resistance level identification
-- Elliott Wave analysis
-- Pattern recognition (Head & Shoulders, Double Tops/Bottoms)
-- Trend reversal detection
-- Entry/Exit signal generation
-
 ### Export to NumPy/Pandas
 
 ```python
-# Export to NumPy array (includes indicators)
+# Export to NumPy array
 import numpy as np
-data = frame.to_numpy()  # Returns [[open, high, low, close, volume, RSI_14, SMA_20], ...]
+data = frame.to_numpy()  # Returns [[open, high, low, close, volume], ...]
 
-# Export to Pandas DataFrame (includes indicators)
+# Export to Pandas DataFrame
 import pandas as pd
-df = frame.to_pandas()  # Returns DataFrame with OHLCV + indicator columns
+df = frame.to_pandas()  # Returns DataFrame with OHLCV columns
 print(df.head())
 ```
-
-### Normalized Data Export
-
-Trading Frame provides intelligent normalization for machine learning applications:
-
-```python
-# Export normalized data to [0, 1] range
-normalized = frame.to_normalize()  # NumPy array with normalized values
-
-# Different normalization strategies by data type:
-# - OHLC: Min-Max across all prices
-# - Volume: Min-Max across all volumes
-# - RSI: Fixed range [0-100] → [0-1]
-# - SMA (price-based): Shares OHLC min-max range
-# - MACD: Min-Max on its own values
-# - Bollinger Bands: Shares OHLC min-max range
-```
-
-Each indicator defines its own normalization strategy:
-- **Fixed Range**: RSI (0-100) normalized to [0, 1]
-- **Price-Based**: SMA, Bollinger Bands share the OHLC normalization range
-- **Min-Max**: MACD, and non-price indicators use their own value ranges
-
-This ensures semantically correct normalization for different indicator types.
 
 ## Supported Time Ranges
 
@@ -327,17 +224,13 @@ trading-frame/
 │   ├── period.py      # Aggregated period
 │   ├── frame.py       # Base frame class
 │   ├── timeframe.py   # Time-based frame
-│   └── indicators/    # Technical indicators
-│       ├── base.py    # Base indicator class
-│       ├── momentum/  # RSI, MACD, etc.
-│       ├── trend/     # SMA, Bollinger Bands, etc.
-│       └── volume/    # Volume indicators
+│   └── exceptions.py  # Custom exceptions
 ├── tests/
 │   ├── test_candle.py
 │   ├── test_period.py
 │   ├── test_frame.py
 │   ├── test_timeframe.py
-│   └── test_indicators.py
+│   └── test_prefill.py
 └── pyproject.toml
 ```
 
@@ -348,3 +241,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Contributing
 
 This is a private repository. For bug reports or feature requests, please use GitHub Issues.
+
+## Related Projects
+
+- [trading-indicators](https://github.com/Morgiver/trading-indicators) - Technical indicators with automatic frame synchronization
+- [trading-asset-view](https://github.com/Morgiver/trading-asset-view) - Multi-timeframe orchestration layer

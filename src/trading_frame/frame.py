@@ -1,10 +1,8 @@
 """Base Frame class for organizing trading data into periods."""
 
 from typing import Callable, List, Dict, Union, Tuple, Optional
-from collections import defaultdict, deque
 from .candle import Candle
 from .period import Period
-from .indicators.base import Indicator
 
 
 class Frame:
@@ -33,11 +31,8 @@ class Frame:
         self._event_channels = {
             'new_period': [],
             'update': [],
-            'close': [],
-            'indicator_added': [],
-            'indicator_removed': []
+            'close': []
         }
-        self.indicators: Dict[Union[str, tuple], Indicator] = {}
 
     def on(self, channel: str, callback: Callable) -> None:
         """
@@ -70,259 +65,6 @@ class Frame:
         if channel in self._event_channels:
             for callback in self._event_channels[channel]:
                 callback(*args, **kwargs)
-
-    def _resolve_dependency_order(
-        self,
-        pending_indicators: List[Tuple[Indicator, Union[str, List[str]]]]
-    ) -> List[Tuple[Indicator, Union[str, List[str]]]]:
-        """
-        Resolve the order of indicator addition via topological sort.
-
-        Parameters:
-            pending_indicators: List of (indicator, column_name) tuples to add
-
-        Returns:
-            Ordered list of (indicator, column_name) tuples
-
-        Raises:
-            ValueError: If circular dependency or missing dependency detected
-        """
-        # Build dependency graph
-        graph = defaultdict(list)  # node -> [nodes it depends on]
-        in_degree = defaultdict(int)
-        node_map = {}  # node_key -> (indicator, column_name)
-
-        # Available columns (OHLCV + existing indicators)
-        available = {'open_price', 'high_price', 'low_price', 'close_price', 'volume'}
-        available.update(self._get_all_indicator_columns())
-
-        # Build graph
-        for indicator, col_name in pending_indicators:
-            # Normalize column name to tuple for consistent keys
-            cols = [col_name] if isinstance(col_name, str) else col_name
-            node_key = tuple(cols)
-            node_map[node_key] = (indicator, col_name)
-            in_degree[node_key] = 0  # Initialize
-
-        # Build dependency edges
-        for indicator, col_name in pending_indicators:
-            cols = [col_name] if isinstance(col_name, str) else col_name
-            node_key = tuple(cols)
-
-            deps = indicator.get_dependencies()
-            for dep in deps:
-                if dep not in available:
-                    # Find which pending indicator provides this dependency
-                    dep_found = False
-                    for other_indicator, other_col in pending_indicators:
-                        other_cols = [other_col] if isinstance(other_col, str) else other_col
-                        if dep in other_cols:
-                            dep_key = tuple(other_cols)
-                            # node_key depends on dep_key
-                            graph[dep_key].append(node_key)
-                            in_degree[node_key] += 1
-                            dep_found = True
-                            break
-
-                    if not dep_found:
-                        raise ValueError(
-                            f"Dependency '{dep}' not found for indicator {indicator.__class__.__name__}. "
-                            f"Available columns: {sorted(available)}"
-                        )
-
-        # Kahn's topological sort
-        queue = deque([node for node in node_map if in_degree[node] == 0])
-        sorted_order = []
-
-        while queue:
-            current = queue.popleft()
-            sorted_order.append(node_map[current])
-
-            # Reduce in-degree for dependent nodes
-            for dependent in graph[current]:
-                in_degree[dependent] -= 1
-                if in_degree[dependent] == 0:
-                    queue.append(dependent)
-
-        if len(sorted_order) != len(pending_indicators):
-            raise ValueError(
-                "Circular dependency detected in indicators. "
-                "Cannot resolve indicator order."
-            )
-
-        return sorted_order
-
-    def add_indicator(
-        self,
-        indicator: Indicator,
-        column_name: Optional[Union[str, List[str]]] = None
-    ) -> Union[str, List[str]]:
-        """
-        Add an indicator to the frame.
-
-        This will:
-        1. Register the indicator
-        2. Add the column(s) to all existing periods
-        3. Calculate values for all existing periods
-
-        Parameters:
-            indicator: Indicator instance to add
-            column_name: Single name (str) or list of names for multi-column
-                        If None, auto-generates name using get_default_column_name()
-
-        Returns:
-            The column name(s) used (for reference)
-
-        Raises:
-            ValueError: If dependencies not met or column already exists
-        """
-        # Auto-generate column name if not provided
-        if column_name is None:
-            column_name = indicator.get_default_column_name()
-        # Validate dependencies
-        dependencies = indicator.get_dependencies()
-        for dep in dependencies:
-            # Check if dependency exists in any period's _data
-            if self.periods and dep not in self.periods[0]._data:
-                raise ValueError(
-                    f"Dependency '{dep}' not found. "
-                    f"Add dependent indicators first or use valid column name."
-                )
-
-        # Validate column_name format
-        is_multi = isinstance(column_name, list)
-        num_outputs = indicator.get_num_outputs()
-
-        if is_multi:
-            if len(column_name) != num_outputs:
-                raise ValueError(
-                    f"Indicator produces {num_outputs} outputs but "
-                    f"{len(column_name)} column names provided"
-                )
-            columns = column_name
-            registry_key = tuple(column_name)
-        else:
-            if num_outputs > 1:
-                raise ValueError(
-                    f"Indicator produces {num_outputs} outputs. "
-                    f"Provide a list of {num_outputs} column names."
-                )
-            columns = [column_name]
-            registry_key = column_name
-
-        # Check for duplicate column names
-        for col in columns:
-            for existing_key in self.indicators.keys():
-                existing_cols = [existing_key] if isinstance(existing_key, str) else list(existing_key)
-                if col in existing_cols:
-                    raise ValueError(f"Column '{col}' already exists")
-
-        # Register indicator
-        self.indicators[registry_key] = indicator
-
-        # Inform indicator of its output column names
-        indicator.set_output_columns(column_name)
-
-        # Add columns to all existing periods and calculate
-        for i, period in enumerate(self.periods):
-            # Initialize columns
-            for col in columns:
-                period._data[col] = None
-
-            # Calculate value(s)
-            result = indicator.calculate(self.periods, i)
-
-            # Assign to columns
-            if is_multi:
-                if result is not None and len(result) == len(columns):
-                    for col, val in zip(columns, result):
-                        period._data[col] = val
-            else:
-                period._data[columns[0]] = result
-
-        # Emit event
-        self.emit('indicator_added', self, columns)
-
-        return column_name
-
-    def add_indicators_auto(
-        self,
-        *indicators: Indicator
-    ) -> Dict[Indicator, Union[str, List[str]]]:
-        """
-        Add multiple indicators with automatic dependency resolution.
-
-        The order of indicators does not matter - dependencies will be
-        automatically resolved using topological sort.
-
-        Parameters:
-            *indicators: Indicator instances to add (in any order)
-
-        Returns:
-            Dictionary mapping {indicator: column_name(s) used}
-
-        Raises:
-            ValueError: If circular dependency or missing dependency detected
-
-        Example:
-            # Order doesn't matter - auto-resolved!
-            mapping = frame.add_indicators_auto(
-                SMACrossover(20, 50),  # Depends on SMA_20, SMA_50
-                SMA(50),
-                RSI(14),
-                SMA(20)
-            )
-            # Resolves to: SMA(20), SMA(50), SMACrossover, RSI(14)
-        """
-        # Prepare list with auto-generated names
-        pending = []
-        for indicator in indicators:
-            col_name = indicator.get_default_column_name()
-            pending.append((indicator, col_name))
-
-        # Resolve dependency order
-        sorted_indicators = self._resolve_dependency_order(pending)
-
-        # Add in resolved order
-        mapping = {}
-        for indicator, col_name in sorted_indicators:
-            self.add_indicator(indicator, col_name)
-            mapping[indicator] = col_name
-
-        return mapping
-
-    def remove_indicator(self, column_name: Union[str, List[str]]) -> None:
-        """
-        Remove an indicator and its data from all periods.
-
-        Parameters:
-            column_name: Single name or list of names to remove
-
-        Raises:
-            ValueError: If indicator not found
-        """
-        # Determine registry key
-        if isinstance(column_name, list):
-            registry_key = tuple(column_name)
-            columns = column_name
-        else:
-            registry_key = column_name
-            columns = [column_name]
-
-        if registry_key not in self.indicators:
-            raise ValueError(f"Indicator '{column_name}' not found")
-
-        # Remove from registry
-        del self.indicators[registry_key]
-
-        # Remove columns from all periods
-        for period in self.periods:
-            for col in columns:
-                if col in period._data:
-                    del period._data[col]
-
-        # Emit event
-        self.emit('indicator_removed', self, columns)
 
     def is_new_period(self, candle: Candle) -> bool:
         """
@@ -364,17 +106,8 @@ class Frame:
         close_date = self.define_close_date(candle)
         new_period = Period(self, candle.date, close_date)
 
-        # Initialize all indicator columns in new period
-        for registry_key in self.indicators.keys():
-            columns = [registry_key] if isinstance(registry_key, str) else list(registry_key)
-            for col in columns:
-                new_period._data[col] = None
-
         new_period.update(candle)
         self.periods.append(new_period)
-
-        # Calculate indicators for new period
-        self._recalculate_indicators_for_period(len(self.periods) - 1)
 
         self.emit('new_period', self)
 
@@ -391,33 +124,7 @@ class Frame:
         # Update OHLCV
         self.periods[-1].update(candle)
 
-        # Recalculate all indicators for the updated period
-        self._recalculate_indicators_for_period(len(self.periods) - 1)
-
         self.emit('update', self)
-
-    def _recalculate_indicators_for_period(self, index: int) -> None:
-        """
-        Recalculate all indicators for a specific period.
-
-        Parameters:
-            index: Index of the period to recalculate
-        """
-        for registry_key, indicator in self.indicators.items():
-            columns = [registry_key] if isinstance(registry_key, str) else list(registry_key)
-
-            # Calculate
-            result = indicator.calculate(self.periods, index)
-
-            # Assign
-            if len(columns) > 1:
-                # Multi-column
-                if result is not None and len(result) == len(columns):
-                    for col, val in zip(columns, result):
-                        self.periods[index]._data[col] = val
-            else:
-                # Single column
-                self.periods[index]._data[columns[0]] = result
 
     def feed(self, candle: Candle) -> None:
         """
@@ -537,13 +244,11 @@ class Frame:
         Convert all periods to numpy array.
 
         Returns:
-            numpy.ndarray: 2D array with OHLCV + all indicators
+            numpy.ndarray: 2D array with OHLCV data
         """
         import numpy as np
         if not self.periods:
-            # Base columns + indicator columns
-            n_cols = 5 + len(self._get_all_indicator_columns())
-            return np.array([], dtype=np.float64).reshape(0, n_cols)
+            return np.array([], dtype=np.float64).reshape(0, 5)
 
         data = []
         for period in self.periods:
@@ -554,39 +259,22 @@ class Frame:
                 float(period.close_price) if period.close_price is not None else np.nan,
                 float(period.volume)
             ]
-
-            # Add indicator values
-            for col_name in sorted(self._get_all_indicator_columns()):
-                value = period._data.get(col_name)
-                row.append(float(value) if value is not None else np.nan)
-
             data.append(row)
 
         return np.array(data, dtype=np.float64)
-
-    def _get_all_indicator_columns(self) -> List[str]:
-        """Get flat list of all indicator column names."""
-        columns = []
-        for key in self.indicators.keys():
-            if isinstance(key, str):
-                columns.append(key)
-            else:
-                columns.extend(list(key))
-        return columns
 
     def to_pandas(self):
         """
         Convert all periods to pandas DataFrame.
 
         Returns:
-            pandas.DataFrame: DataFrame with OHLCV + all indicator columns
+            pandas.DataFrame: DataFrame with OHLCV columns
         """
         import pandas as pd
         if not self.periods:
             base_cols = ['open_date', 'close_date', 'open_price',
                          'high_price', 'low_price', 'close_price', 'volume']
-            all_cols = base_cols + sorted(self._get_all_indicator_columns())
-            return pd.DataFrame(columns=all_cols)
+            return pd.DataFrame(columns=base_cols)
 
         data = [period.to_dict() for period in self.periods]
         df = pd.DataFrame(data)
@@ -594,140 +282,4 @@ class Frame:
         # Convert volume from Decimal to float
         df['volume'] = df['volume'].astype(float)
 
-        # Convert indicator values to float (handle None)
-        for col_name in self._get_all_indicator_columns():
-            if col_name in df.columns:
-                df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
-
         return df
-
-    def to_normalize(self):
-        """
-        Convert all periods to normalized numpy array.
-
-        Normalization strategies:
-        - OHLC + Price-based indicators: Unified Min-Max across OHLC and all
-          price-based indicators (SMA, Bollinger Bands, etc.)
-          This ensures consistent scaling when indicators can exceed price range.
-        - Volume: Independent Min-Max normalization across all volumes
-        - Indicators: Each indicator defines its own normalization strategy
-          * RSI: Fixed range 0-100 → [0, 1]
-          * SMA (price-based): Shares unified price min-max range
-          * MACD: Min-Max on its own values
-          * Bollinger Bands: Shares unified price min-max range
-
-        Returns:
-            numpy.ndarray: 2D array with normalized values in range [0, 1]
-                          (price-based indicators may slightly exceed [0,1] if
-                          their values extend beyond OHLC before unification)
-        """
-        import numpy as np
-
-        if not self.periods:
-            n_cols = 5 + len(self._get_all_indicator_columns())
-            return np.array([], dtype=np.float64).reshape(0, n_cols)
-
-        # Step 1: Extract all OHLC and Volume values
-        price_values = []  # Will include OHLC + price-based indicators
-        volume_values = []
-
-        for period in self.periods:
-            if period.open_price is not None:
-                price_values.append(float(period.open_price))
-            if period.high_price is not None:
-                price_values.append(float(period.high_price))
-            if period.low_price is not None:
-                price_values.append(float(period.low_price))
-            if period.close_price is not None:
-                price_values.append(float(period.close_price))
-            volume_values.append(float(period.volume))
-
-        # Step 2: Add price-based indicator values to price range calculation
-        # This ensures Bollinger Bands, SMA, etc. are included in min/max
-        for col_name in sorted(self._get_all_indicator_columns()):
-            # Find indicator
-            indicator = None
-            for key, ind in self.indicators.items():
-                if isinstance(key, str) and key == col_name:
-                    indicator = ind
-                    break
-                elif isinstance(key, tuple) and col_name in key:
-                    indicator = ind
-                    break
-
-            # If price-based, include in price range calculation
-            if indicator and indicator.get_normalization_type() == 'price':
-                for period in self.periods:
-                    val = period._data.get(col_name)
-                    if val is not None:
-                        price_values.append(float(val))
-
-        # Step 3: Calculate Price and Volume ranges
-        price_array = np.array(price_values)
-        volume_array = np.array(volume_values)
-
-        price_min = float(np.min(price_array)) if len(price_array) > 0 else 0.0
-        price_max = float(np.max(price_array)) if len(price_array) > 0 else 1.0
-        volume_min = float(np.min(volume_array)) if len(volume_array) > 0 else 0.0
-        volume_max = float(np.max(volume_array)) if len(volume_array) > 0 else 1.0
-
-        # Avoid division by zero
-        price_range = price_max - price_min if price_max != price_min else 1.0
-        volume_range = volume_max - volume_min if volume_max != volume_min else 1.0
-
-        # Step 4: Collect all indicator values for min-max indicators
-        indicator_arrays = {}
-        for col_name in sorted(self._get_all_indicator_columns()):
-            values = []
-            for period in self.periods:
-                val = period._data.get(col_name)
-                if val is not None:
-                    values.append(float(val))
-                else:
-                    values.append(np.nan)
-            indicator_arrays[col_name] = np.array(values, dtype=np.float64)
-
-        # Step 5: Build normalized data
-        data = []
-        for period in self.periods:
-            # Normalize OHLC
-            row = [
-                (float(period.open_price) - price_min) / price_range if period.open_price is not None else np.nan,
-                (float(period.high_price) - price_min) / price_range if period.high_price is not None else np.nan,
-                (float(period.low_price) - price_min) / price_range if period.low_price is not None else np.nan,
-                (float(period.close_price) - price_min) / price_range if period.close_price is not None else np.nan,
-                # Normalize Volume
-                (float(period.volume) - volume_min) / volume_range
-            ]
-
-            # Normalize indicators
-            for col_name in sorted(self._get_all_indicator_columns()):
-                value = period._data.get(col_name)
-
-                # Find the indicator instance
-                indicator = None
-                for key, ind in self.indicators.items():
-                    if isinstance(key, str) and key == col_name:
-                        indicator = ind
-                        break
-                    elif isinstance(key, tuple) and col_name in key:
-                        indicator = ind
-                        break
-
-                if indicator is None:
-                    # Shouldn't happen, but fallback to raw value
-                    row.append(float(value) if value is not None else np.nan)
-                    continue
-
-                # Normalize based on indicator's strategy
-                normalized = indicator.normalize(
-                    values=value,
-                    all_values=indicator_arrays[col_name],
-                    price_range=(price_min, price_max)
-                )
-
-                row.append(float(normalized) if normalized is not None else np.nan)
-
-            data.append(row)
-
-        return np.array(data, dtype=np.float64)
