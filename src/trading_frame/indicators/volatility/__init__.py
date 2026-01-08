@@ -1,3 +1,5 @@
-"""Volatility indicators (placeholder for future implementation)."""
+"""Volatility indicators."""
 
-__all__ = []
+from .atr import ATR
+
+__all__ = ['ATR']
