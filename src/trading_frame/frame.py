@@ -1,6 +1,7 @@
 """Base Frame class for organizing trading data into periods."""
 
-from typing import Callable, List, Dict, Union
+from typing import Callable, List, Dict, Union, Tuple, Optional
+from collections import defaultdict, deque
 from .candle import Candle
 from .period import Period
 from .indicators.base import Indicator
@@ -70,11 +71,92 @@ class Frame:
             for callback in self._event_channels[channel]:
                 callback(*args, **kwargs)
 
+    def _resolve_dependency_order(
+        self,
+        pending_indicators: List[Tuple[Indicator, Union[str, List[str]]]]
+    ) -> List[Tuple[Indicator, Union[str, List[str]]]]:
+        """
+        Resolve the order of indicator addition via topological sort.
+
+        Parameters:
+            pending_indicators: List of (indicator, column_name) tuples to add
+
+        Returns:
+            Ordered list of (indicator, column_name) tuples
+
+        Raises:
+            ValueError: If circular dependency or missing dependency detected
+        """
+        # Build dependency graph
+        graph = defaultdict(list)  # node -> [nodes it depends on]
+        in_degree = defaultdict(int)
+        node_map = {}  # node_key -> (indicator, column_name)
+
+        # Available columns (OHLCV + existing indicators)
+        available = {'open_price', 'high_price', 'low_price', 'close_price', 'volume'}
+        available.update(self._get_all_indicator_columns())
+
+        # Build graph
+        for indicator, col_name in pending_indicators:
+            # Normalize column name to tuple for consistent keys
+            cols = [col_name] if isinstance(col_name, str) else col_name
+            node_key = tuple(cols)
+            node_map[node_key] = (indicator, col_name)
+            in_degree[node_key] = 0  # Initialize
+
+        # Build dependency edges
+        for indicator, col_name in pending_indicators:
+            cols = [col_name] if isinstance(col_name, str) else col_name
+            node_key = tuple(cols)
+
+            deps = indicator.get_dependencies()
+            for dep in deps:
+                if dep not in available:
+                    # Find which pending indicator provides this dependency
+                    dep_found = False
+                    for other_indicator, other_col in pending_indicators:
+                        other_cols = [other_col] if isinstance(other_col, str) else other_col
+                        if dep in other_cols:
+                            dep_key = tuple(other_cols)
+                            # node_key depends on dep_key
+                            graph[dep_key].append(node_key)
+                            in_degree[node_key] += 1
+                            dep_found = True
+                            break
+
+                    if not dep_found:
+                        raise ValueError(
+                            f"Dependency '{dep}' not found for indicator {indicator.__class__.__name__}. "
+                            f"Available columns: {sorted(available)}"
+                        )
+
+        # Kahn's topological sort
+        queue = deque([node for node in node_map if in_degree[node] == 0])
+        sorted_order = []
+
+        while queue:
+            current = queue.popleft()
+            sorted_order.append(node_map[current])
+
+            # Reduce in-degree for dependent nodes
+            for dependent in graph[current]:
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    queue.append(dependent)
+
+        if len(sorted_order) != len(pending_indicators):
+            raise ValueError(
+                "Circular dependency detected in indicators. "
+                "Cannot resolve indicator order."
+            )
+
+        return sorted_order
+
     def add_indicator(
         self,
         indicator: Indicator,
-        column_name: Union[str, List[str]]
-    ) -> None:
+        column_name: Optional[Union[str, List[str]]] = None
+    ) -> Union[str, List[str]]:
         """
         Add an indicator to the frame.
 
@@ -86,10 +168,17 @@ class Frame:
         Parameters:
             indicator: Indicator instance to add
             column_name: Single name (str) or list of names for multi-column
+                        If None, auto-generates name using get_default_column_name()
+
+        Returns:
+            The column name(s) used (for reference)
 
         Raises:
             ValueError: If dependencies not met or column already exists
         """
+        # Auto-generate column name if not provided
+        if column_name is None:
+            column_name = indicator.get_default_column_name()
         # Validate dependencies
         dependencies = indicator.get_dependencies()
         for dep in dependencies:
@@ -153,6 +242,54 @@ class Frame:
 
         # Emit event
         self.emit('indicator_added', self, columns)
+
+        return column_name
+
+    def add_indicators_auto(
+        self,
+        *indicators: Indicator
+    ) -> Dict[Indicator, Union[str, List[str]]]:
+        """
+        Add multiple indicators with automatic dependency resolution.
+
+        The order of indicators does not matter - dependencies will be
+        automatically resolved using topological sort.
+
+        Parameters:
+            *indicators: Indicator instances to add (in any order)
+
+        Returns:
+            Dictionary mapping {indicator: column_name(s) used}
+
+        Raises:
+            ValueError: If circular dependency or missing dependency detected
+
+        Example:
+            # Order doesn't matter - auto-resolved!
+            mapping = frame.add_indicators_auto(
+                SMACrossover(20, 50),  # Depends on SMA_20, SMA_50
+                SMA(50),
+                RSI(14),
+                SMA(20)
+            )
+            # Resolves to: SMA(20), SMA(50), SMACrossover, RSI(14)
+        """
+        # Prepare list with auto-generated names
+        pending = []
+        for indicator in indicators:
+            col_name = indicator.get_default_column_name()
+            pending.append((indicator, col_name))
+
+        # Resolve dependency order
+        sorted_indicators = self._resolve_dependency_order(pending)
+
+        # Add in resolved order
+        mapping = {}
+        for indicator, col_name in sorted_indicators:
+            self.add_indicator(indicator, col_name)
+            mapping[indicator] = col_name
+
+        return mapping
 
     def remove_indicator(self, column_name: Union[str, List[str]]) -> None:
         """

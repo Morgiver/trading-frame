@@ -74,6 +74,10 @@ class MACD(Indicator):
         """MACD produces 3 outputs: line, signal, histogram."""
         return 3
 
+    def get_output_names(self) -> List[str]:
+        """MACD output names."""
+        return ['line', 'signal', 'hist']
+
     def get_normalization_type(self) -> str:
         """MACD uses its own min-max normalization."""
         return 'minmax'

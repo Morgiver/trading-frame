@@ -93,6 +93,10 @@ class PivotPoints(Indicator):
         """PivotPoints produce 2 outputs: high pivot price, low pivot price."""
         return 2
 
+    def get_output_names(self) -> List[str]:
+        """PivotPoints output names."""
+        return ['high', 'low']
+
     def get_normalization_type(self) -> str:
         """Pivot points use price-based normalization (they represent prices)."""
         return 'price'

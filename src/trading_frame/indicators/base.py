@@ -73,6 +73,52 @@ class Indicator(ABC):
         """
         return 1
 
+    def get_output_names(self) -> List[str]:
+        """
+        Return names for output columns (for multi-column indicators).
+
+        Returns:
+            List of output names (e.g., ['upper', 'middle', 'lower'])
+            Default is ['value'] for single-output indicators
+        """
+        return ['value']
+
+    def get_default_column_name(self) -> Union[str, List[str]]:
+        """
+        Generate default column name(s) based on indicator class and parameters.
+
+        Uses naming convention: ClassName_param1_param2_...
+        For multi-output indicators: ClassName_outputName1, ClassName_outputName2, ...
+
+        Returns:
+            Single string for single-output indicators
+            List of strings for multi-output indicators
+
+        Examples:
+            SMA(period=20) -> 'SMA_20'
+            RSI(length=14) -> 'RSI_14'
+            BollingerBands(period=20) -> ['BollingerBands_upper', 'BollingerBands_middle', 'BollingerBands_lower']
+            MACD(fast=12, slow=26) -> ['MACD_line', 'MACD_signal', 'MACD_hist']
+        """
+        class_name = self.__class__.__name__
+
+        # Extract main parameters in priority order
+        params = []
+        for param_name in ['period', 'length', 'fast', 'slow']:
+            if hasattr(self, param_name):
+                params.append(str(getattr(self, param_name)))
+                break  # Only use first found parameter
+
+        # Single output
+        if self.get_num_outputs() == 1:
+            if params:
+                return f"{class_name}_{'_'.join(params)}"
+            return class_name
+
+        # Multi-output
+        output_names = self.get_output_names()
+        return [f"{class_name}_{name}" for name in output_names]
+
     def get_normalization_type(self) -> str:
         """
         Return the normalization strategy for this indicator.

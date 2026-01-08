@@ -69,6 +69,10 @@ class FVG(Indicator):
         """FVG produces 2 outputs: fvg_high, fvg_low."""
         return 2
 
+    def get_output_names(self) -> List[str]:
+        """FVG output names."""
+        return ['high', 'low']
+
     def get_normalization_type(self) -> str:
         """FVG uses price-based normalization (they represent price levels)."""
         return 'price'

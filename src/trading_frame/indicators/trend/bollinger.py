@@ -78,6 +78,10 @@ class BollingerBands(Indicator):
         """Bollinger Bands produce 3 outputs: upper, middle, lower."""
         return 3
 
+    def get_output_names(self) -> List[str]:
+        """Bollinger Bands output names."""
+        return ['upper', 'middle', 'lower']
+
     def get_normalization_type(self) -> str:
         """Bollinger Bands use price-based normalization (they represent prices)."""
         return 'price'
