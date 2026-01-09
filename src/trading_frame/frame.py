@@ -268,7 +268,7 @@ class Frame:
         Convert all periods to pandas DataFrame.
 
         Returns:
-            pandas.DataFrame: DataFrame with OHLCV columns
+            pandas.DataFrame: DataFrame with OHLCV columns and DateTimeIndex
         """
         import pandas as pd
         if not self.periods:
@@ -281,6 +281,9 @@ class Frame:
 
         # Convert volume from Decimal to float
         df['volume'] = df['volume'].astype(float)
+
+        # Set open_date as DateTimeIndex
+        df.set_index('open_date', inplace=True)
 
         return df
 
